@@ -1,15 +1,20 @@
 # Trip Planner
 
-Single-file HTML app. Enter destination + dates, get a report: stays, sights, food, day-by-day plan.
+Enter a destination and dates to generate stays, sights, food recommendations and a day-by-day itinerary.
 
-## Status
-Runs inside claude.ai as an Artifact. It uses the `window.claude` `sample` capability to generate reports.
-That API does NOT exist on GitHub Pages or any other host.
+## Project structure
 
-## To run it standalone
-Replace the `sample(...)` call in `index.html` with a `fetch` to your own backend
-(for example a Cloudflare Worker that holds an Anthropic API key and returns the JSON).
-Never put an API key in the page.
+- `public/index.html`: browser interface
+- `functions/api/plan.js`: Cloudflare Pages Function for `POST /api/plan`; calls the Anthropic Messages API
+- `wrangler.toml`: Cloudflare Pages project configuration
 
-## Deploy (GitHub Pages)
-Settings > Pages > Deploy from branch > main / root.
+## Deploy with Cloudflare Pages
+
+1. In Cloudflare, open **Workers & Pages** and create a Pages project connected to this GitHub repository.
+2. Set the build command to **none** and the build output directory to `public`.
+3. Add `ANTHROPIC_API_KEY` as an encrypted secret in the Pages project settings. Optionally set `MODEL` as an environment variable.
+4. Deploy or trigger a new deployment.
+
+The API key must remain a server-side secret; do not add it to the HTML or commit it to the repository.
+
+For production, configure rate limiting for `/api/plan` and set an API spending limit.
