@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trip Planner</title>
+<style>
+:root{--bg:#faf8f4;--card:#fff;--ink:#1f2933;--mut:#6b7280;--line:#e5e1d8;--acc:#0f766e;--acc2:#e8f3f1;--warn:#b45309;--warnbg:#fef3c7;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14181c;--card:#1c2228;--ink:#e8eaed;--mut:#9aa3ad;--line:#2d353d;--acc:#2dd4bf;--acc2:#12312e;--warn:#fbbf24;--warnbg:#3a2e0e}}
+:root[data-theme="dark"]{--bg:#14181c;--card:#1c2228;--ink:#e8eaed;--mut:#9aa3ad;--line:#2d353d;--acc:#2dd4bf;--acc2:#12312e;--warn:#fbbf24;--warnbg:#3a2e0e}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.7rem;margin:.2em 0}
+.sub{color:var(--mut);margin:0 0 18px}
+form{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mut);gap:4px}
+input,select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.full{grid-column:1/-1}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--acc);background:var(--acc);color:#fff;padding:10px 16px;font-weight:600}
+:root[data-theme="dark"] button.go,@media (prefers-color-scheme:dark){button.go{color:#06201d}}
+button.ghost{background:transparent;color:var(--acc)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chip{padding:5px 11px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:.82rem;font-weight:500}
+.chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+#status{margin:16px 0;color:var(--mut)}
+.bar{height:4px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;width:30%;background:var(--acc);animation:s 1.2s infinite ease-in-out}
+@keyframes s{0%{margin-left:-30%}100%{margin-left:100%}}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:18px 0 12px;padding-bottom:4px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5}
+.tab{white-space:nowrap;background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.tab.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h3{margin:0 0 4px;font-size:1.02rem}
+.meta{color:var(--mut);font-size:.84rem}
+.tag{display:inline-block;background:var(--acc2);color:var(--acc);border-radius:6px;padding:1px 8px;font-size:.76rem;margin-right:4px}
+.price{font-weight:700;color:var(--acc)}
+h2{font-size:1.15rem;margin:22px 0 8px}
+.warn{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:10px 14px;margin:10px 0;font-size:.9rem}
+.day{border-left:3px solid var(--acc);padding:2px 0 2px 14px;margin:0 0 18px}
+.day ul{margin:6px 0;padding-left:18px}
+.note{font-size:.78rem;color:var(--mut);margin-top:24px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>✈️ Trip Planner</h1>
+  <p class="sub">Enter a destination and dates. Get stays, sights, food and a day-by-day plan.</p>
+  <form id="f">
+    <label class="full">Destination<input id="dest" required placeholder="e.g. Thailand: Bangkok, Chiang Mai, Phuket"></label>
+    <label>Start<input id="d1" type="date" required></label>
+    <label>End<input id="d2" type="date" required></label>
+    <label>Travellers<input id="pax" type="number" min="1" max="12" value="2"></label>
+    <label>Budget<select id="bud"><option>Budget</option><option selected>Mid-range</option><option>Luxury</option></select></label>
+    <label>Home currency<select id="cur"><option>INR</option><option>USD</option><option>EUR</option><option>GBP</option><option>AED</option></select></label>
+    <label>Departing from<input id="from" value="Mumbai"></label>
+    <label class="full">Interests (optional)<input id="int" placeholder="beaches, temples, street food, family-friendly, nightlife"></label>
+    <div class="full row">
+      <button class="go" id="go" type="submit">Build my report</button>
+      <button type="button" class="ghost" id="ex">Try: Thailand 10 days</button>
+    </div>
+  </form>
+  <div id="status" aria-live="polite"></div>
+  <div id="out" class="hide">
+    <div class="row"><h2 id="title" style="margin:0;flex:1"></h2><button class="ghost" id="dl">Download .md</button></div>
+    <div class="tabs" id="tabs"></div>
+    <div id="pane"></div>
+    <p class="note">Generated by AI. Prices, hours and availability are estimates. Check hotels, flights and entry rules before booking.</p>
+  </div>
+</div>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var data=null,tab='Overview',filter='All';
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function add(p){for(var i=1;i<arguments.length;i++)if(arguments[i])p.appendChild(arguments[i]);return p}
+function iso(d){return d.toISOString().slice(0,10)}
+(function(){var t=new Date();t.setDate(t.getDate()+30);var e=new Date(t);e.setDate(e.getDate()+9);$('d1').value=iso(t);$('d2').value=iso(e)})();
+$('ex').onclick=function(){$('dest').value='Thailand: Bangkok, Chiang Mai, Phuket and Krabi';$('int').value='temples, beaches, street food, family-friendly';var s=new Date($('d1').value);var e=new Date(s);e.setDate(e.getDate()+9);$('d2').value=iso(e)};
+
+function prompt(){
+  var s=new Date($('d1').value),e=new Date($('d2').value),n=Math.round((e-s)/864e5)+1;
+  return {n:n,text:'You are an expert travel planner. Plan a trip.\nDestination: '+$('dest').value+'\nDates: '+$('d1').value+' to '+$('d2').value+' ('+n+' days)\nTravellers: '+$('pax').value+'\nBudget level: '+$('bud').value+'\nDeparting from: '+$('from').value+'\nShow costs in local currency with approx '+$('cur').value+' in brackets.\nInterests: '+($('int').value||'general sightseeing')+'\n\nReturn ONLY compact JSON, no markdown fences, no commentary, matching exactly:\n{"overview":"2-3 sentences","best_time":"season fit for these dates, weather","currency":"local currency and rough rate","budget_per_day":"per person per day","getting_there":"flight routes, airlines, typical fare range from departure city","getting_around":"local transport tips","areas":[{"name":"","why":"","stay":[{"name":"real hotel/hostel/resort","type":"hotel|resort|hostel|homestay","price":"per night","why":"one line"}]}],"attractions":[{"name":"","area":"","type":"Temple|Beach|Nature|Culture|Food|Nightlife|Shopping|Family","duration":"","cost":"","tip":""}],"food":[{"name":"","dish":"","price":""}],"days":[{"date":"YYYY-MM-DD","title":"","plan":["morning...","afternoon...","evening..."],"stay":"where sleeping"}],"tips":["..."],"warnings":["visa, scams, weather, closures relevant to these dates"]}\nLimits: 2-4 areas with 2 stays each, 10-14 attractions, 6 food items, exactly '+n+' day entries with each plan max 3 short strings, 5 tips, up to 3 warnings. Keep strings short. Use real, well-known places only.'};
+}
+
+$('f').onsubmit=async function(ev){
+  ev.preventDefault();
+  var p=prompt();
+  if(p.n<1||p.n>21){$('status').textContent='Pick a range of 1 to 21 days.';return}
+  var st=$('status');st.textContent='';add(st,el('div','', 'Building your report…'),(function(){var b=el('div','bar');b.appendChild(el('i'));return b})());
+  $('go').disabled=true;$('out').classList.add('hide');
+  var sample=null;try{sample=await claude.use('sample')}catch(x){}
+  if(!sample){st.textContent='This page needs Claude access to generate reports. Open it in claude.ai and allow the prompt.';$('go').disabled=false;return}
+  try{
+    var r=await sample(p.text,{cache:false,modelTier:'default'});
+    var t=(r.text||'').replace(/```json|```/g,'').trim();
+    var a=t.indexOf('{'),b=t.lastIndexOf('}');
+    data=JSON.parse(t.slice(a,b+1));
+    st.textContent='';tab='Overview';filter='All';render();
+  }catch(x){
+    st.textContent=(x&&x.code==='not_granted')?'Permission denied. Allow Claude access and try again.':(x&&x.code==='rate_limited')?'Rate limited. Wait a minute and retry.':'Could not build the report (response may have been cut off). Try fewer days or a narrower destination.';
+  }
+  $('go').disabled=false;
+};
+
+var TABS=['Overview','Stay','See & Do','Eat','Day plan','Tips'];
+function render(){
+  $('out').classList.remove('hide');
+  $('title').textContent=$('dest').value+' · '+$('d1').value+' → '+$('d2').value;
+  var tb=$('tabs');tb.textContent='';
+  TABS.forEach(function(n){var b=el('button','tab'+(n===tab?' on':''),n);b.type='button';b.onclick=function(){tab=n;render()};tb.appendChild(b)});
+  var pane=$('pane');pane.textContent='';
+  var d=data;
+  if(tab==='Overview'){
+    add(pane,el('p','',d.overview||''));
+    var g=el('div','grid');
+    [['Best time',d.best_time],['Currency',d.currency],['Budget / day',d.budget_per_day],['Getting there',d.getting_there],['Getting around',d.getting_around]].forEach(function(x){if(x[1]){var c=el('div','card');add(c,el('h3','',x[0]),el('div','',x[1]));g.appendChild(c)}});
+    pane.appendChild(g);
+    (d.warnings||[]).forEach(function(w){pane.appendChild(el('div','warn','⚠️ '+w))});
+  }
+  if(tab==='Stay'){
+    (d.areas||[]).forEach(function(a){
+      add(pane,el('h2','',a.name),el('p','meta',a.why||''));
+      var g=el('div','grid');
+      (a.stay||[]).forEach(function(s){var c=el('div','card');add(c,el('h3','',s.name),add(el('div'),el('span','tag',s.type||'stay'),el('span','price',s.price||'')),el('p','meta',s.why||''));g.appendChild(c)});
+      pane.appendChild(g);
+    });
+  }
+  if(tab==='See & Do'){
+    var at=d.attractions||[],types=['All'];
+    at.forEach(function(a){if(a.type&&types.indexOf(a.type)<0)types.push(a.type)});
+    var r=el('div','row');r.style.marginBottom='12px';
+    types.forEach(function(t){var b=el('button','chip'+(t===filter?' on':''),t);b.type='button';b.onclick=function(){filter=t;render()};r.appendChild(b)});
+    pane.appendChild(r);
+    var g=el('div','grid');
+    at.filter(function(a){return filter==='All'||a.type===filter}).forEach(function(a){
+      var c=el('div','card');add(c,el('h3','',a.name),add(el('div'),el('span','tag',a.type||''),el('span','meta',a.area||'')),el('div','meta','⏱ '+(a.duration||'?')+' · 🎟 '+(a.cost||'?')),el('p','',a.tip||''));g.appendChild(c)});
+    pane.appendChild(g);
+  }
+  if(tab==='Eat'){
+    var g=el('div','grid');
+    (d.food||[]).forEach(function(f){var c=el('div','card');add(c,el('h3','',f.name),el('div','',f.dish||''),el('div','price',f.price||''));g.appendChild(c)});
+    pane.appendChild(g);
+  }
+  if(tab==='Day plan'){
+    (d.days||[]).forEach(function(x,i){
+      var w=el('div','day');add(w,el('h3','','Day '+(i+1)+' · '+(x.date||'')+' · '+(x.title||'')));
+      var u=el('ul');(x.plan||[]).forEach(function(s){u.appendChild(el('li','',s))});w.appendChild(u);
+      if(x.stay)w.appendChild(el('div','meta','🛏 '+x.stay));
+      pane.appendChild(w);
+    });
+  }
+  if(tab==='Tips'){
+    var u=el('ul');(d.tips||[]).forEach(function(s){u.appendChild(el('li','',s))});pane.appendChild(u);
+    (d.warnings||[]).forEach(function(w){pane.appendChild(el('div','warn','⚠️ '+w))});
+  }
+}
+
+$('dl').onclick=async function(){
+  if(!data)return;
+  var m='# '+$('dest').value+'\n'+$('d1').value+' to '+$('d2').value+'\n\n'+(data.overview||'')+'\n\n';
+  (data.areas||[]).forEach(function(a){m+='## Stay: '+a.name+'\n';(a.stay||[]).forEach(function(s){m+='- '+s.name+' ('+s.price+')\n'})});
+  m+='\n## See & Do\n';(data.attractions||[]).forEach(function(a){m+='- '+a.name+' ['+a.type+'], '+a.cost+'\n'});
+  m+='\n## Days\n';(data.days||[]).forEach(function(x,i){m+='### Day '+(i+1)+' '+x.date+': '+x.title+'\n';(x.plan||[]).forEach(function(s){m+='- '+s+'\n'})});
+  try{var dl=await claude.use('downloads');if(dl)await dl.save({filename:'trip-plan.md',data:m})}catch(e){}
+};
+})();
+</script>
+</body>
+</html>
