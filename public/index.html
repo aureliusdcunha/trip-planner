@@ -41,30 +41,43 @@ $('pax').addEventListener('change',()=>{const p=Math.max(1,Math.min(12,Number($(
 $('adults').addEventListener('change',()=>{const p=Number($('pax').value)||1;$('adults').value=Math.max(1,Math.min(p,Number($('adults').value)||1))});
 $('sample').onclick=()=>{$('dest').value='Thailand: Bangkok, Chiang Mai, Phuket and Krabi';$('int').value='temples, beaches, local food, culture and relaxed family-friendly activities';const d=new Date($('d1').value+'T00:00:00');d.setDate(d.getDate()+9);$('d2').value=iso(d)};
 async function requestPhase(payload){
- const r=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
- const contentType=r.headers.get('content-type')||'';
- if(contentType.includes('text/event-stream')&&r.body){
-  const reader=r.body.getReader(),decoder=new TextDecoder();let buffer='',data=null,failure=null;
-  const consume=frame=>{const lines=frame.split(/\\r?\\n/),line=lines.find(x=>x.startsWith('data:'));if(!line)return;let msg;try{msg=JSON.parse(line.slice(5).trim())}catch{return}
-   if(msg.type==='progress'&&msg.message)$('status').textContent=msg.message;
-   else if(msg.type==='heartbeat')$('status').textContent='Still waiting for the AI response for '+payload.phase+'… connection is active.';
-   else if(msg.type==='result'&&msg.phase===payload.phase)data=msg.data;
-   else if(msg.type==='error')failure=msg.error||('Unable to generate '+payload.phase+'.');
-  };
-  while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\\r?\\n\\r?\\n/);buffer=frames.pop();frames.forEach(consume)}
-  buffer+=decoder.decode();if(buffer.trim())consume(buffer);
-  if(failure)throw Error(failure);
-  if(!data)throw Error('The '+payload.phase+' stream ended before a complete result arrived. Please retry this section.');
-  return data;
+ let lastError=null;
+ for(let attempt=0;attempt<2;attempt++){
+  try{
+   const r=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+   const contentType=r.headers.get('content-type')||'';
+   if(contentType.includes('text/event-stream')&&r.body){
+    const reader=r.body.getReader(),decoder=new TextDecoder();let buffer='',data=null,failure=null;
+    const consume=frame=>{const lines=frame.split(/\r?\n/),line=lines.find(x=>x.startsWith('data:'));if(!line)return;let msg;try{msg=JSON.parse(line.slice(5).trim())}catch{return}
+     if(msg.type==='progress'&&msg.message)$('status').textContent=msg.message;
+     else if(msg.type==='heartbeat')$('status').textContent='Still waiting for the AI response for '+payload.phase+'… connection is active.';
+     else if(msg.type==='result'&&msg.phase===payload.phase)data=msg.data;
+     else if(msg.type==='error')failure=msg.error||('Unable to generate '+payload.phase+'.');
+    };
+    while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();frames.forEach(consume)}
+    buffer+=decoder.decode();if(buffer.trim())consume(buffer);
+    try{reader.releaseLock()}catch{}
+    if(failure)throw Error(failure);
+    if(!data)throw Error('The '+payload.phase+' stream ended before a complete result arrived.');
+    return data;
+   }
+   const raw=await r.text();let result;try{result=JSON.parse(raw)}catch{
+    if(r.status===504||r.status===524)throw Error('The connection timed out (HTTP '+r.status+') before a complete AI response arrived.');
+    if(r.status===502)throw Error('The Cloudflare gateway could not complete the '+payload.phase+' request (HTTP 502).');
+    throw Error('The '+payload.phase+' request returned a non-JSON server response (HTTP '+r.status+').');
+   }
+   if(!r.ok)throw Error(result.error||('Unable to generate '+payload.phase+'.'));
+   if(!result.data||result.phase!==payload.phase)throw Error('The '+payload.phase+' response was incomplete.');
+   return result.data;
+  }catch(e){
+   lastError=e;
+   const message=String(e?.message||e);
+   const retryable=/stream ended before|timed out \(HTTP (502|503|504|524)\)|Cloudflare gateway could not complete|Gemini ended its stream before|Gemini closed the stream without/i.test(message);
+   if(attempt===0&&retryable){$('status').textContent='The connection was interrupted. Retrying the '+payload.phase+' section once…';await new Promise(resolve=>setTimeout(resolve,900));continue}
+   throw e;
+  }
  }
- const raw=await r.text();let result;try{result=JSON.parse(raw)}catch{
-  if(r.status===504||r.status===524)throw Error('The connection timed out (HTTP '+r.status+') before a complete AI response arrived. Please retry this section.');
-  if(r.status===502)throw Error('The Cloudflare gateway could not complete the '+payload.phase+' request (HTTP 502). Please retry shortly.');
-  throw Error('The '+payload.phase+' request returned a non-JSON server response (HTTP '+r.status+').');
- }
- if(!r.ok)throw Error(result.error||('Unable to generate '+payload.phase+'.'));
- if(!result.data||result.phase!==payload.phase)throw Error('The '+payload.phase+' response was incomplete. Please retry.');
- return result.data;
+ throw lastError||Error('Unable to complete '+payload.phase+'.');
 }
 $('tripForm').onsubmit=async ev=>{ev.preventDefault();const d1=$('d1').value,d2=$('d2').value,n=Math.round((Date.parse(d2+'T00:00:00Z')-Date.parse(d1+'T00:00:00Z'))/864e5)+1;if(n<1||n>21){$('status').textContent='Choose a trip between 1 and 21 days.';return}const pax=Number($('pax').value),adults=Number($('adults').value);if(adults>pax){$('status').textContent='Adults cannot exceed total travellers.';return}const input={dest:$('dest').value,d1,d2,pax,adults,bud:$('bud').value,cur:$('cur').value,from:$('from').value,int:$('int').value};$('generate').disabled=true;$('report').classList.add('hidden');let stage='route and hotel recommendations';try{$('status').textContent='Step 1 of 3 · Planning your route and hotel options…';const core=await requestPhase({...input,phase:'core'});stage='experiences, practical guide and budget';$('status').textContent='Step 2 of 3 · Researching experiences, dining and budget…';const details=await requestPhase({...input,phase:'details'});const dates=[];for(let i=0;i<n;i++)dates.push(new Date(Date.parse(d1+'T00:00:00Z')+i*864e5).toISOString().slice(0,10));const days=[];const bases=(core.areas||[]).map(a=>a.name+' ('+a.nights+')');for(let i=0;i<dates.length;i+=2){const batch=dates.slice(i,i+2);stage='daily itinerary ('+(i+1)+'–'+(i+batch.length)+' of '+n+')';$('status').textContent='Step 3 of 3 · Creating '+stage+'…';const part=await requestPhase({...input,phase:'days',dayDates:batch,bases});days.push(...part.days)}const parsed={...core,...details,days};const required=['flight_options','internal_transport','areas','highlights','dining','tips','caveats'];if(required.some(k=>!Array.isArray(parsed[k]))||days.length!==n||!parsed.budget||!parsed.practical||days.some((d,i)=>d.date!==dates[i]||!Array.isArray(d.activities)||d.activities.length<2||!Array.isArray(d.meals)))throw Error('The completed report did not pass final validation. Please generate it again.');trip=parsed;active='Overview';$('status').textContent='';render()}catch(e){$('status').textContent='Could not complete '+stage+': '+(e.message||'Please retry.')}finally{$('generate').disabled=false}};
 })();
