@@ -122,11 +122,11 @@ async function runAgent(kind,ctx,env,send,retryBudget){
    if(attempt===0&&err?.name!=="TimeoutError"&&retryBudget.remaining>0){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
    throw new Error(label+": "+(err?.name==="TimeoutError"?"AI request timed out after 110 seconds.":"Could not connect to Gemini Interactions API."));
   }
-  if(response.status===503&&attempt===0&&retryBudget.remaining>0){
+  if([502,503,504].includes(response.status)&&attempt===0&&retryBudget.remaining>0){
    retryBudget.remaining--;
    let wait=Math.min(2500,Number(response.headers.get("retry-after"))*1000||1000);
    try{await response.body?.cancel()}catch{}
-   send({type:"agent_retry",agent:label,message:"Gemini is overloaded; retrying once."});
+   send({type:"agent_retry",agent:label,message:"Gemini temporarily failed (HTTP "+response.status+"); retrying once."});
    await new Promise(resolve=>setTimeout(resolve,wait));
    continue;
   }
@@ -169,6 +169,7 @@ async function runAgent(kind,ctx,env,send,retryBudget){
     if(event.interaction?.usage?.grounding_tool_count)send({type:"agent_usage",agent:label,grounding:event.interaction.usage.grounding_tool_count});
    }
   };
+  let readError=null;
   try{
    while(true){
     const part=await reader.read();if(part.done)break;
@@ -178,12 +179,36 @@ async function runAgent(kind,ctx,env,send,retryBudget){
     if(streamError)break;
    }
    buffer+=decoder.decode();if(buffer.trim())parseFrame(buffer);
-  }finally{try{reader.releaseLock()}catch{}}
-  if(streamError)throw new Error(label+": "+streamError);
-  if(status!=="completed")throw new Error(label+": Gemini stream ended before the interaction was completed (status "+status+").");
-  if(!output.trim())throw new Error(label+": Gemini stream ended without structured text.");
-  let data;try{data=JSON.parse(output.trim())}catch{throw new Error(label+": Gemini returned incomplete JSON.")}
-  const issue=validateAgent(kind,data,ctx);if(issue)throw new Error(label+": "+issue);
+  }catch(err){readError=err}
+  finally{try{reader.releaseLock()}catch{}}
+  const canRetry=attempt===0&&retryBudget.remaining>0;
+  if(readError){
+   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response stream was interrupted; retrying once."});continue}
+   throw new Error(label+": response stream interrupted: "+(readError?.message||"network error"));
+  }
+  if(streamError){
+   if(canRetry&&/timeout|temporar|overload|gateway|interrupted|unavailable/i.test(streamError)){
+    retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini interrupted the response; retrying once."});continue;
+   }
+   throw new Error(label+": "+streamError);
+  }
+  if(status!=="completed"){
+   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini ended the stream early; retrying once."});continue}
+   throw new Error(label+": Gemini stream ended before the interaction was completed (status "+status+").");
+  }
+  if(!output.trim()){
+   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini returned no text; retrying once."});continue}
+   throw new Error(label+": Gemini stream ended without structured text.");
+  }
+  let data;try{data=JSON.parse(output.trim())}catch{
+   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The JSON response was incomplete; retrying once."});continue}
+   throw new Error(label+": Gemini returned incomplete JSON.");
+  }
+  const issue=validateAgent(kind,data,ctx);
+  if(issue){
+   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response was incomplete; retrying this research task once."});continue}
+   throw new Error(label+": "+issue);
+  }
   return {data,sources:sourceUnique(sources),queries};
  }
  throw new Error(label+": Gemini was temporarily unavailable after retry.");
