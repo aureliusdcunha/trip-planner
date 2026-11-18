@@ -1,0 +1,4 @@
+/* Visual foundation extracted from the user-approved Thailand itinerary master template.
+   Destination content and Thailand-specific script/data are intentionally excluded. */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap');
+:root{--gold:#C9A84C;--deep-red:#8B1A1A;--jade:#2D6A4F;--cream:#FAF5E9;--ink:#1A1208;--soft-gold:#F0E0A8;--muted:#8A7A60;--accent-blue:#1B4F72;--shadow:rgba(26,18,8,0.12);--kid:#E67E22;--transport:#6C3483}
