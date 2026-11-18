@@ -106,7 +106,6 @@ async function runAgent(kind,ctx,env,send,retryBudget){
  };
  if(ctx.useSearch){
   body.tools=[{type:"google_search"}];
-  body.generation_config.tool_choice="any";
  }
  const sources=[],queries=[];
  for(let attempt=0;attempt<2;attempt++){
@@ -180,7 +179,7 @@ async function runAgent(kind,ctx,env,send,retryBudget){
    buffer+=decoder.decode();if(buffer.trim())parseFrame(buffer);
   }finally{try{reader.releaseLock()}catch{}}
   if(streamError)throw new Error(label+": "+streamError);
-  if(status!=="completed"&&status!=="in_progress")throw new Error(label+": Gemini interaction ended with status "+status+".");
+  if(status!=="completed")throw new Error(label+": Gemini stream ended before the interaction was completed (status "+status+").");
   if(!output.trim())throw new Error(label+": Gemini stream ended without structured text.");
   let data;try{data=JSON.parse(output.trim())}catch{throw new Error(label+": Gemini returned incomplete JSON.")}
   const issue=validateAgent(kind,data,ctx);if(issue)throw new Error(label+": "+issue);
@@ -191,7 +190,11 @@ async function runAgent(kind,ctx,env,send,retryBudget){
 async function pool(tasks,limit,worker){
  let next=0;const results=new Array(tasks.length);
  const runners=Array.from({length:Math.min(limit,tasks.length)},async()=>{
-  while(true){const i=next++;if(i>=tasks.length)return;results[i]=await worker(tasks[i],i)}
+  while(true){
+   const i=next++;if(i>=tasks.length)return;
+   try{results[i]={ok:true,value:await worker(tasks[i],i)}}
+   catch(error){results[i]={ok:false,error:error?.message||String(error),task:tasks[i]}}
+  }
  });
  await Promise.all(runners);return results;
 }
@@ -242,7 +245,7 @@ export async function onRequestPost({request,env}){
       tasks.push({kind:"transport",label:"Transport researcher"});
       tasks.push({kind:"guide",label:"Practical guide & budget researcher"});
       let completed=0;
-      const specialistResults=await pool(tasks,5,async(task)=>{
+      const specialistRuns=await pool(tasks,5,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed,total:tasks.length});
        const ctx={trip,useSearch,areas,area:task.area,label:task.label};
        const result=await runAgent(task.kind,ctx,env,emit,retryBudget);
@@ -250,6 +253,9 @@ export async function onRequestPost({request,env}){
        emit({type:"agent_completed",agent:task.label,completed,total:tasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
       });
+      const specialistFailures=specialistRuns.filter(x=>!x.ok);
+      if(specialistFailures.length)throw new Error("These research tasks could not complete: "+specialistFailures.map(x=>x.task.label+" — "+x.error).join("; "));
+      const specialistResults=specialistRuns.map(x=>x.value);
       const combined={
        ...route.data,
        areas:areas.map(area=>{
@@ -270,7 +276,7 @@ export async function onRequestPost({request,env}){
       emit({type:"stage",stage:"daily",message:"Specialists are complete. Day planners are now building the itinerary one day at a time.",agentTotal:dayCount});
       const dayTasks=dayDates.map((date,index)=>({date,index,base:schedule[index],label:"Day planner · Day "+(index+1)}));
       let daysCompleted=0;
-      const dayResults=await pool(dayTasks,5,async(task)=>{
+      const dayRuns=await pool(dayTasks,5,async(task)=>{
        const relevant=combined.highlights.filter(h=>String(h.area||"").toLowerCase().includes(task.base.toLowerCase())||task.base.toLowerCase().includes(String(h.area||"").toLowerCase())).slice(0,8);
        emit({type:"agent_started",agent:task.label,completed:daysCompleted,total:dayCount});
        const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit,retryBudget);
@@ -278,6 +284,9 @@ export async function onRequestPost({request,env}){
        emit({type:"agent_completed",agent:task.label,completed:daysCompleted,total:dayCount,sourceCount:result.sources.length,searchCount:0});
        return result.data.days[0];
       });
+      const dayFailures=dayRuns.filter(x=>!x.ok);
+      if(dayFailures.length)throw new Error("These daily plans could not complete: "+dayFailures.map(x=>x.task.label+" — "+x.error).join("; "));
+      const dayResults=dayRuns.map(x=>x.value);
       combined.days=dayResults.sort((a,b)=>a.date.localeCompare(b.date));
       combined.research_sources=sourceUnique(specialistResults.flatMap(x=>x.sources||[])).map(s=>({...s,agent:specialistResults.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
       combined.research={search_enabled:useSearch,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:specialistResults.reduce((sum,x)=>sum+x.queries.length,0)};
