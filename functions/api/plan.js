@@ -95,22 +95,27 @@ function promptFor(kind,ctx){
  }
  return "";
 }
-async function runAgent(kind,ctx,env,send,retryBudget){
+async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget){
  const label=ctx.label||kind;
- const model=clip(env.MODEL||"gemini-3.8-flash",80);
- const body={
-  model,
-  store:false,
-  input:promptFor(kind,ctx),
-  response_format:{type:"text",mime_type:"application/json",schema:schemas[kind]},
-  stream:true,
-  generation_config:{max_output_tokens:kind==="route"?900:kind==="flights"?850:kind==="transport"?800:kind==="stay"?750:kind==="attractions"?900:kind==="dining"?650:kind==="guide"?1100:850,thinking_level:"low"}
- };
- if(ctx.useSearch){
-  body.tools=[{type:"google_search"}];
- }
  const sources=[],queries=[];
- for(let attempt=0;attempt<2;attempt++){
+ for(let attempt=0;attempt<4;attempt++){
+  const model=modelState.current;
+  const useSearch=ctx.useSearch&&!(modelState.freeTier&&model===modelState.fallback);
+  if(ctx.useSearch&&!useSearch&&!modelState.searchNoticeSent){
+   modelState.searchNoticeSent=true;
+   send({type:"model_notice",message:"Google Search grounding is unavailable on the free tier for the fallback model. Continuing with model knowledge; prices and availability remain estimates."});
+  }
+  const body={
+   model,
+   store:false,
+   input:promptFor(kind,ctx),
+   response_format:{type:"text",mime_type:"application/json",schema:schemas[kind]},
+   stream:true,
+   generation_config:{max_output_tokens:kind==="route"?900:kind==="flights"?850:kind==="transport"?800:kind==="stay"?750:kind==="attractions"?900:kind==="dining"?650:kind==="guide"?1100:850,thinking_level:"low"}
+  };
+  if(useSearch)body.tools=[{type:"google_search"}];
+  if(requestBudget.remaining<=0)throw new Error(label+": the request safety budget is exhausted. Please retry later or reduce trip length.");
+  requestBudget.remaining--;
   let response;
   try{
    response=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{
@@ -120,12 +125,29 @@ async function runAgent(kind,ctx,env,send,retryBudget){
     signal:AbortSignal.timeout(110000)
    });
   }catch(err){
-   if(attempt===0&&err?.name!=="TimeoutError"&&retryBudget.remaining>0){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
+   if(attempt<3&&err?.name!=="TimeoutError"&&retryBudget.remaining>0){
+    retryBudget.remaining--;
+    send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});
+    continue;
+   }
    throw new Error(label+": "+(err?.name==="TimeoutError"?"AI request timed out after 110 seconds.":"Could not connect to Gemini Interactions API."));
   }
-  if([502,503,504].includes(response.status)&&attempt===0&&retryBudget.remaining>0){
+  if(response.status===429){
+   let details="";try{details=(await response.text()).slice(0,700)}catch{}
+   const freeTier=/free.?tier|FreeTier/i.test(details);
+   if(freeTier)modelState.freeTier=true;
+   if(model!==modelState.fallback&&modelState.fallback){
+    const previous=model;
+    if(modelState.current===model)modelState.current=modelState.fallback;
+    modelState.switched=true;
+    send({type:"model_fallback",agent:label,from:previous,to:modelState.current,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Rate limit reached for "+previous+". Switching to "+modelState.current+"."});
+    continue;
+   }
+   throw new Error(label+": the primary and fallback model are rate-limited (HTTP 429). "+details+" Wait for the quota reset or enable Gemini billing for higher limits.");
+  }
+  if([502,503,504].includes(response.status)&&attempt<3&&retryBudget.remaining>0){
    retryBudget.remaining--;
-   let wait=Math.min(2500,Number(response.headers.get("retry-after"))*1000||1000);
+   const wait=Math.min(2500,Number(response.headers.get("retry-after"))*1000||1000);
    try{await response.body?.cancel()}catch{}
    send({type:"agent_retry",agent:label,message:"Gemini temporarily failed (HTTP "+response.status+"); retrying once."});
    await new Promise(resolve=>setTimeout(resolve,wait));
@@ -133,7 +155,7 @@ async function runAgent(kind,ctx,env,send,retryBudget){
   }
   if(!response.ok){
    let text="";try{text=(await response.text()).slice(0,600)}catch{}
-   if(ctx.useSearch&&(response.status===400||response.status===403)){
+   if(useSearch&&(response.status===400||response.status===403)){
     throw new Error(label+": Gemini rejected the Google Search request (HTTP "+response.status+"). Search grounding may require an eligible billing-enabled project or the provider may have rejected the request configuration. "+text);
    }
    throw new Error(label+": Gemini returned HTTP "+response.status+". "+text);
@@ -182,7 +204,7 @@ async function runAgent(kind,ctx,env,send,retryBudget){
    buffer+=decoder.decode();if(buffer.trim())parseFrame(buffer);
   }catch(err){readError=err}
   finally{try{reader.releaseLock()}catch{}}
-  const canRetry=attempt===0&&retryBudget.remaining>0;
+  const canRetry=attempt<3&&retryBudget.remaining>0;
   if(readError){
    if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response stream was interrupted; retrying once."});continue}
    throw new Error(label+": response stream interrupted: "+(readError?.message||"network error"));
@@ -210,7 +232,7 @@ async function runAgent(kind,ctx,env,send,retryBudget){
    if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response was incomplete; retrying this research task once."});continue}
    throw new Error(label+": "+issue);
   }
-  return {data,sources:sourceUnique(sources),queries};
+  return {data,sources:sourceUnique(sources),queries,model};
  }
  throw new Error(label+": Gemini was temporarily unavailable after retry.");
 }
@@ -261,8 +283,13 @@ export async function onRequestPost({request,env}){
     deadlineTimer=setTimeout(()=>{emit({type:"error",error:"The research team exceeded its 9-minute safety window. Please retry with fewer travel days or a simpler destination."});cancelled=true;controller.close()},540000);
     (async()=>{
      try{
-      // Max 21 days / 4 bases = 37 agent calls; reserve at most 10 retries (47 total, under the 50 Free-plan subrequest limit).
-      const retryBudget={remaining:10};
+      // 21-day / four-base plans use at most 37 agents. Three initial quota fallbacks plus seven retries keep requests at or below 47.
+      const primaryModel=clip(env.MODEL||"gemini-3.8-flash",80);
+      const configuredFallback=clip(env.FALLBACK_MODEL||"gemini-3.5-flash-lite",80);
+      const fallbackModel=configuredFallback===primaryModel?"gemini-3.1-flash-lite":configuredFallback;
+      const modelState={primary:primaryModel,fallback:fallbackModel,current:primaryModel,switched:false,freeTier:false,searchNoticeSent:false};
+      const retryBudget={remaining:7};
+      const requestBudget={remaining:49};
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
@@ -274,7 +301,7 @@ export async function onRequestPost({request,env}){
       const openingRuns=await pool(openingTasks,3,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed:openingCompleted,total:openingTasks.length});
        const ctx={trip,useSearch,maxBases,nights:dayCount-1,label:task.label};
-       const result=await runAgent(task.kind,ctx,env,emit,retryBudget);
+       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget);
        openingCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:openingCompleted,total:openingTasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
@@ -296,7 +323,7 @@ export async function onRequestPost({request,env}){
       const specialistRuns=await pool(tasks,5,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed,total:tasks.length});
        const ctx={trip,useSearch,areas,area:task.area,label:task.label};
-       const result=await runAgent(task.kind,ctx,env,emit,retryBudget);
+       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget);
        completed++;
        emit({type:"agent_completed",agent:task.label,completed,total:tasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
@@ -327,18 +354,19 @@ export async function onRequestPost({request,env}){
       const dayRuns=await pool(dayTasks,5,async(task)=>{
        const relevant=combined.highlights.filter(h=>String(h.area||"").toLowerCase().includes(task.base.toLowerCase())||task.base.toLowerCase().includes(String(h.area||"").toLowerCase())).slice(0,8);
        emit({type:"agent_started",agent:task.label,completed:daysCompleted,total:dayCount});
-       const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit,retryBudget);
+       const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit,retryBudget,modelState,requestBudget);
        daysCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:daysCompleted,total:dayCount,sourceCount:result.sources.length,searchCount:0});
-       return result.data.days[0];
+       return {day:result.data.days[0],model:result.model};
       },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const dayFailures=dayRuns.filter(x=>!x.ok);
       if(dayFailures.length)throw new Error("These daily plans could not complete: "+dayFailures.map(x=>x.task.label+" — "+x.error).join("; "));
       const dayResults=dayRuns.map(x=>x.value);
-      combined.days=dayResults.sort((a,b)=>a.date.localeCompare(b.date));
+      combined.days=dayResults.map(x=>x.day).sort((a,b)=>a.date.localeCompare(b.date));
       const allResearch=[{label:"Route architect",sources:route.sources||[],queries:route.queries||[]},...specialistResults];
       combined.research_sources=sourceUnique(allResearch.flatMap(x=>x.sources||[])).map(s=>({...s,agent:allResearch.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
-      combined.research={search_enabled:useSearch,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
+      const modelsUsed=Array.from(new Set([route.model,...specialistResults.map(x=>x.model),...dayResults.map(x=>x.model)].filter(Boolean)));
+      combined.research={search_requested:useSearch,search_enabled:useSearch&&!modelState.freeTier,search_disabled_for_free_tier_fallback:modelState.freeTier&&useSearch,primary_model:modelState.primary,fallback_model:modelState.fallback,model_fallback_used:modelState.switched,model_used:modelsUsed.length===1?modelsUsed[0]:modelsUsed.join(", "),models_used:modelsUsed,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
       const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats"];
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
       if(combined.areas.some(a=>!Array.isArray(a.hotel_options)||!a.hotel_options.length))throw new Error("At least one stay researcher did not return suitable hotel options.");
