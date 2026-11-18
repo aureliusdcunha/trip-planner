@@ -171,6 +171,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
     if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Model "+model+" is temporarily overloaded. Switching to "+next+"."});continue}
    }
    if(useSearch&&(response.status===400||response.status===403))throw new Error(label+": Gemini rejected the Google Search request (HTTP "+response.status+"). Search grounding may require an eligible billing-enabled project or the provider may have rejected the request configuration. "+details);
+   if(transient)throw new Error(label+": all configured Gemini models are currently overloaded or unavailable. Please wait a few minutes and retry. Last response: HTTP "+response.status+". "+details);
    throw new Error(label+": Gemini returned HTTP "+response.status+". "+details);
   }
   if(!response.body){releaseRequestSlot(requestGate);throw new Error(label+": Gemini returned no response stream.")}
@@ -226,6 +227,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
     const next=advanceModel(modelState,model);
     if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Model "+model+" remains overloaded. Switching to "+next+"."});continue}
    }
+   if(isCapacityError(streamError))throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please wait a few minutes and retry. "+streamError);
    throw new Error(label+": "+streamError);
   }
   if(status!=="completed"){if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini ended the stream early; retrying once."});continue}throw new Error(label+": Gemini stream ended before the interaction was completed (status "+status+").")}
@@ -284,7 +286,7 @@ export async function onRequestPost({request,env}){
     deadlineTimer=setTimeout(()=>{emit({type:"error",error:"The research team exceeded its 9-minute safety window. Please retry with fewer travel days or a simpler destination."});cancelled=true;controller.close()},540000);
     (async()=>{
      try{
-      // 21-day / four-base plans use at most 37 agents. Three initial quota fallbacks plus seven retries keep requests at or below 47.
+      // 21-day / four-base plans use at most 37 agents. The shared request budget caps model rotations and retries at 49 calls; the gate allows at most two in-flight calls.
       const primaryModel=clip(env.MODEL||"gemini-3.8-flash",80);
       const configuredFallback=clip(env.FALLBACK_MODEL||"gemini-3.5-flash-lite",80);
       const tertiaryModel=clip(env.TERTIARY_MODEL||"gemini-3.1-flash-lite",80);
