@@ -99,6 +99,7 @@ async function runAgent(kind,ctx,env,send,retryBudget){
  const model=clip(env.MODEL||"gemini-3.8-flash",80);
  const body={
   model,
+  store:false,
   input:promptFor(kind,ctx),
   response_format:{type:"text",mime_type:"application/json",schema:schemas[kind]},
   stream:true,
@@ -288,8 +289,9 @@ export async function onRequestPost({request,env}){
       if(dayFailures.length)throw new Error("These daily plans could not complete: "+dayFailures.map(x=>x.task.label+" — "+x.error).join("; "));
       const dayResults=dayRuns.map(x=>x.value);
       combined.days=dayResults.sort((a,b)=>a.date.localeCompare(b.date));
-      combined.research_sources=sourceUnique(specialistResults.flatMap(x=>x.sources||[])).map(s=>({...s,agent:specialistResults.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
-      combined.research={search_enabled:useSearch,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:specialistResults.reduce((sum,x)=>sum+x.queries.length,0)};
+      const allResearch=[{label:"Route architect",sources:route.sources||[],queries:route.queries||[]},...specialistResults];
+      combined.research_sources=sourceUnique(allResearch.flatMap(x=>x.sources||[])).map(s=>({...s,agent:allResearch.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
+      combined.research={search_enabled:useSearch,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
       const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats"];
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
       if(combined.areas.some(a=>!Array.isArray(a.hotel_options)||!a.hotel_options.length))throw new Error("At least one stay researcher did not return suitable hotel options.");
