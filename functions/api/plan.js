@@ -8,6 +8,7 @@ const clip = (v, n) => String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, n);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function onRequestPost({ request, env }) {
+  try {
   const origin = request.headers.get('origin');
   if (origin && origin !== new URL(request.url).origin) return J({ error: 'forbidden' }, 403);
   if (!env.GEMINI_API_KEY) return J({ error: 'server not configured: add GEMINI_API_KEY in Cloudflare Pages settings' }, 500);
@@ -54,4 +55,9 @@ export async function onRequestPost({ request, env }) {
     .filter(x => typeof x.text === 'string').map(x => x.text).join('');
   if (!text) return J({ error: 'Gemini returned an empty response. Please try again.' }, 502);
   return J({ text });
+  } catch (err) {
+    // Keep the client response JSON even if the provider/network throws.
+    console.error('Trip Planner API failure:', err?.stack || err);
+    return J({ error: 'The trip-planning service encountered an internal error. Please retry. If it continues, check Cloudflare Pages Functions logs.' }, 502);
+  }
 }
