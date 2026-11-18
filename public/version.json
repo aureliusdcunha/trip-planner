@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "released": "2026-11-18",
-  "releaseName": "Quota failover, overload retries and request throttling"
+  "releaseName": "Per-minute quota cooldown and paced request queue"
 }
