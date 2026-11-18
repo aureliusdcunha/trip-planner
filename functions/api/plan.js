@@ -261,7 +261,8 @@ export async function onRequestPost({request,env}){
     deadlineTimer=setTimeout(()=>{emit({type:"error",error:"The research team exceeded its 9-minute safety window. Please retry with fewer travel days or a simpler destination."});cancelled=true;controller.close()},540000);
     (async()=>{
      try{
-      // Max 21 days / 4 bases = 37 agent calls; reserve at most 10 retries (47 total, under the 50 Free-plan subrequest limit).\n      const retryBudget={remaining:10};
+      // Max 21 days / 4 bases = 37 agent calls; reserve at most 10 retries (47 total, under the 50 Free-plan subrequest limit).
+      const retryBudget={remaining:10};
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
