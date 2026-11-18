@@ -115,14 +115,14 @@ async function acquireRequestSlot(gate){
 }
 function rateLimitCooldownSeconds(details){
  const text=String(details||"");
- const retry=text.match(/retry\\s+in\\s+(\\d+)\\s*(s|sec(?:onds?)?|m|min(?:utes?)?)/i);
+ const retry=text.match(/retry\s+in\s+(\d+)\s*(s|sec(?:onds?)?|m|min(?:utes?)?)/i);
  if(retry){
   const amount=Number(retry[1]);
   const unit=retry[2].toLowerCase();
   const seconds=unit.startsWith("m")?amount*60:amount;
   return seconds>0&&seconds<=120?seconds:0;
  }
- return /requests?\\s+per\\s+minute|per minute/i.test(text)?60:0;
+ return /requests?\s+per\s+minute|per minute/i.test(text)?60:0;
 }
 function releaseRequestSlot(gate){
  if(gate.queue.length){const next=gate.queue.shift();next()}
