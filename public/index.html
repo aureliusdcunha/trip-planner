@@ -54,6 +54,7 @@ async function requestItinerary(payload){
    else if(msg.type==='agent_started')$('status').textContent='Research agent started · '+msg.agent;
    else if(msg.type==='agent_search')$('status').textContent='Searching the web · '+msg.agent+' · '+msg.query;
    else if(msg.type==='agent_retry')$('status').textContent=msg.agent+' · '+msg.message;
+   else if(msg.type==='agent_failed')$('status').textContent='Research task failed · '+msg.agent+' · '+msg.error;
    else if(msg.type==='agent_completed')$('status').textContent='Completed '+msg.completed+' of '+msg.total+' tasks · '+msg.agent;
    else if(msg.type==='result')data=msg.data;
    else if(msg.type==='error')failure=msg.error||'The travel research team could not complete the plan.';
