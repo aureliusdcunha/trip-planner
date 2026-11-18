@@ -109,7 +109,7 @@ export async function onRequestPost({request,env}){
       const upstreamReader=r.body.getReader(),upstreamDecoder=new TextDecoder();
       let upstreamBuffer="",output="",finishReason="",upstreamError=null,receivedChunks=0;
       const acceptProviderFrame=frame=>{
-       const dataLines=frame.split(/\\r?\\n/).filter(line=>line.startsWith("data:")).map(line=>line.slice(5).trim());
+       const dataLines=frame.split(/\r?\n/).filter(line=>line.startsWith("data:")).map(line=>line.slice(5).trim());
        if(!dataLines.length)return;
        const raw=dataLines.join("\\n");
        if(raw==="[DONE]")return;
@@ -124,7 +124,7 @@ export async function onRequestPost({request,env}){
        while(true){
         const next=await upstreamReader.read();if(next.done)break;
         upstreamBuffer+=upstreamDecoder.decode(next.value,{stream:true});
-        const frames=upstreamBuffer.split(/\\r?\\n\\r?\\n/);upstreamBuffer=frames.pop();
+        const frames=upstreamBuffer.split(/\r?\n\r?\n/);upstreamBuffer=frames.pop();
         for(const frame of frames)acceptProviderFrame(frame);
        }
        upstreamBuffer+=upstreamDecoder.decode();
