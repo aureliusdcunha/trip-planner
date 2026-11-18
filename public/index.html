@@ -95,7 +95,12 @@ $('f').onsubmit=async function(ev){
   $('go').disabled=true;$('out').classList.add('hide');
   try{
     var resp=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p.body)});
-    var r=await resp.json();
+    var raw=await resp.text(),r;
+    try { r=JSON.parse(raw); }
+    catch(parseErr) {
+      var preview=raw.replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim().slice(0,180);
+      throw new Error('Server returned a non-JSON response (HTTP '+resp.status+'). '+(preview||'Empty response')+' Check that the latest Cloudflare deployment includes the Pages Function.');
+    }
     if(!resp.ok){var er=new Error(r.error||'Request failed');er.status=resp.status;throw er}
     var t=(r.text||'').replace(/\`\`\`json|\`\`\`/g,'').trim();
     var a=t.indexOf('{'),b=t.lastIndexOf('}');
