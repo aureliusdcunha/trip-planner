@@ -19,6 +19,15 @@ The form includes an optional **Use Google Search for each specialist researcher
 
 When Search is off, agents still work independently but use the model's existing knowledge rather than live web grounding. Treat their prices and availability as indicative, not live quotes.
 
+### Automatic model quota fallback
+
+The primary model defaults to `gemini-3.8-flash`. If Gemini returns HTTP 429, all agents in that itinerary switch to `gemini-3.5-flash-lite` for the rest of the run. This model is supported by the Interactions API and is designed for high-volume agentic tasks. The fallback is shared across agents so the application does not continue sending requests to a model whose quota is exhausted. If the fallback model is also rate-limited, the app returns the provider's quota error with guidance to wait for reset or enable billing.
+
+- Optional Cloudflare environment variable `MODEL` selects the primary model.
+- Optional `FALLBACK_MODEL` selects the quota fallback; default: `gemini-3.5-flash-lite`.
+- On a Free Tier quota failure, Google Search grounding is disabled after switching because Google lists Search grounding as unavailable on the fallback model's Free Tier. The report explains this and labels pricing/availability as estimates.
+- A request budget caps each itinerary to fewer than 50 Gemini API subrequests on the Cloudflare Workers Free plan.
+
 ## Project structure
 
 - `public/index.html`: browser interface, stream reader, report renderer and dynamic budget calculation
