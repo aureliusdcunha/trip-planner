@@ -283,8 +283,13 @@ export async function onRequestPost({request,env}){
     deadlineTimer=setTimeout(()=>{emit({type:"error",error:"The research team exceeded its 9-minute safety window. Please retry with fewer travel days or a simpler destination."});cancelled=true;controller.close()},540000);
     (async()=>{
      try{
-      // Max 21 days / 4 bases = 37 agent calls; reserve at most 10 retries (47 total, under the 50 Free-plan subrequest limit).
-      const retryBudget={remaining:10};
+      // 21-day / four-base plans use at most 37 agents. Three initial quota fallbacks plus seven retries keep requests at or below 47.
+      const primaryModel=clip(env.MODEL||"gemini-3.8-flash",80);
+      const configuredFallback=clip(env.FALLBACK_MODEL||"gemini-3.5-flash-lite",80);
+      const fallbackModel=configuredFallback===primaryModel?"gemini-3.1-flash-lite":configuredFallback;
+      const modelState={primary:primaryModel,fallback:fallbackModel,current:primaryModel,switched:false,freeTier:false,searchNoticeSent:false};
+      const retryBudget={remaining:7};
+      const requestBudget={remaining:47};
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
@@ -296,7 +301,7 @@ export async function onRequestPost({request,env}){
       const openingRuns=await pool(openingTasks,3,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed:openingCompleted,total:openingTasks.length});
        const ctx={trip,useSearch,maxBases,nights:dayCount-1,label:task.label};
-       const result=await runAgent(task.kind,ctx,env,emit,retryBudget);
+       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget);
        openingCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:openingCompleted,total:openingTasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
@@ -349,18 +354,19 @@ export async function onRequestPost({request,env}){
       const dayRuns=await pool(dayTasks,5,async(task)=>{
        const relevant=combined.highlights.filter(h=>String(h.area||"").toLowerCase().includes(task.base.toLowerCase())||task.base.toLowerCase().includes(String(h.area||"").toLowerCase())).slice(0,8);
        emit({type:"agent_started",agent:task.label,completed:daysCompleted,total:dayCount});
-       const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit,retryBudget);
+       const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit,retryBudget,modelState,requestBudget);
        daysCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:daysCompleted,total:dayCount,sourceCount:result.sources.length,searchCount:0});
-       return result.data.days[0];
+       return {day:result.data.days[0],model:result.model};
       },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const dayFailures=dayRuns.filter(x=>!x.ok);
       if(dayFailures.length)throw new Error("These daily plans could not complete: "+dayFailures.map(x=>x.task.label+" — "+x.error).join("; "));
       const dayResults=dayRuns.map(x=>x.value);
-      combined.days=dayResults.sort((a,b)=>a.date.localeCompare(b.date));
+      combined.days=dayResults.map(x=>x.day).sort((a,b)=>a.date.localeCompare(b.date));
       const allResearch=[{label:"Route architect",sources:route.sources||[],queries:route.queries||[]},...specialistResults];
       combined.research_sources=sourceUnique(allResearch.flatMap(x=>x.sources||[])).map(s=>({...s,agent:allResearch.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
-      combined.research={search_enabled:useSearch,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
+      const modelsUsed=Array.from(new Set([route.model,...specialistResults.map(x=>x.model),...dayResults.map(x=>x.model)].filter(Boolean)));
+      combined.research={search_requested:useSearch,search_enabled:useSearch&&!modelState.freeTier,search_disabled_for_free_tier_fallback:modelState.freeTier&&useSearch,primary_model:modelState.primary,fallback_model:modelState.fallback,model_fallback_used:modelState.switched,model_used:modelsUsed.length===1?modelsUsed[0]:modelsUsed.join(", "),models_used:modelsUsed,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
       const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats"];
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
       if(combined.areas.some(a=>!Array.isArray(a.hotel_options)||!a.hotel_options.length))throw new Error("At least one stay researcher did not return suitable hotel options.");
