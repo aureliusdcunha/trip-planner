@@ -39,7 +39,7 @@ The primary model defaults to `gemini-3.8-flash`. If Gemini returns HTTP 429, al
 1. Connect this GitHub repository to a Cloudflare Pages project.
 2. Set the build command to **none** and the build output directory to `public`.
 3. In **Settings → Variables and Secrets**, add `GEMINI_API_KEY` as an encrypted secret.
-4. Optionally set `MODEL` as a plain-text environment variable. The default is `gemini-3.8-flash`.
+4. Optionally set `MODEL` as a plain-text environment variable (default `gemini-3.8-flash`) and `FALLBACK_MODEL` (default `gemini-3.5-flash-lite`).
 5. Deploy or trigger a new deployment after adding the secret.
 
 Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey). Keep it server-side as a Cloudflare secret; do not add it to the HTML or commit it to the repository.
@@ -49,7 +49,7 @@ Gemini API availability, free-tier quotas and pricing depend on Google's current
 
 ## Application versioning
 
-The current release version is maintained in `public/version.json`. The browser reads this manifest and displays the version in the report footer. The manifest is served with `Cache-Control: no-store` so the displayed release number does not remain stale after a deployment.
+The current release version is maintained in `public/version.json`. The browser reads this manifest and displays the version badge beside the application name at the top of the page. The manifest is served with `Cache-Control: no-store` so the displayed release number does not remain stale after a deployment.
 
 **Every production deployment must include a version bump in `public/version.json` before merging to `main`.** Use semantic versioning:
 
