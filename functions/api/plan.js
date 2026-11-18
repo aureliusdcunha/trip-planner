@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env }) {
     '\nShow costs in local currency with approx ' + clip(b.cur, 5) + ' in brackets.\nInterests: ' + (clip(b.int, 200) || 'general sightseeing') +
     '\n\nReturn ONLY compact JSON, no markdown fences, no commentary, matching exactly:\n' +
     '{"overview":"2-3 sentences","best_time":"season fit for these dates, weather","currency":"local currency and rough rate","budget_per_day":"per person per day","getting_there":"flight routes, airlines, typical fare range from departure city","getting_around":"local transport tips","areas":[{"name":"","why":"","stay":[{"name":"real hotel/hostel/resort","type":"hotel|resort|hostel|homestay","price":"per night","why":"one line"}]}],"attractions":[{"name":"","area":"","type":"Temple|Beach|Nature|Culture|Food|Nightlife|Shopping|Family","duration":"","cost":"","tip":""}],"food":[{"name":"","dish":"","price":""}],"days":[{"date":"YYYY-MM-DD","title":"","plan":["morning...","afternoon...","evening..."],"stay":"where sleeping"}],"tips":["..."],"warnings":["visa, scams, weather, closures relevant to these dates"]}\n' +
-    'Limits: 2-4 areas with 2 stays each, 10-14 attractions, 6 food items, exactly ' + n + ' day entries with each plan max 3 short strings, 5 tips, up to 3 warnings. Keep strings short. Use real, well-known places only.';
+    'Limits: 2-3 areas with 1-2 stays each, 8-10 attractions, 5 food items, exactly ' + n + ' day entries with each plan max 2 concise strings, 4 tips, up to 2 warnings. Keep every string concise. Use real, well-known places only. Prioritize a practical route over exhaustive detail.';
 
   const model = clip(env.MODEL || 'gemini-3.8-flash', 80);
   const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' +
@@ -35,7 +35,7 @@ export async function onRequestPost({ request, env }) {
     headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8000, temperature: 0.7 }
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 3500, temperature: 0.7 }
     })
   });
 
