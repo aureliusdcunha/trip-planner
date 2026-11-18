@@ -91,6 +91,6 @@ $('tripForm').onsubmit=async ev=>{
  }catch(e){$('status').textContent='Could not complete itinerary: '+(e.message||'Please retry.')}
  finally{$('generate').disabled=false}
 };
-fetch('/version.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(info=>{if(info&&/^\\d+\\.\\d+\\.\\d+$/.test(info.version||''))$('appVersion').textContent='Version '+info.version}).catch(()=>{});
+fetch('/version.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(info=>{if(info&&/^\d+\.\d+\.\d+$/.test(info.version||''))$('appVersion').textContent='Version '+info.version}).catch(()=>{});
 })();
 </script></body></html>
