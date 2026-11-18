@@ -61,7 +61,7 @@ export async function onRequestPost({request,env}){
    return J({error:'The generated itinerary did not pass validation. Please retry.'},502);
   const numericBudget=['exchange_rate_to_home','international_flight_per_person','local_transport_total','hotel_per_room_per_night','activity_per_person_per_day','food_per_person_per_day','shopping_per_person','contingency_percent'];
   if(numericBudget.some(k=>!Number.isFinite(itinerary.budget[k])||itinerary.budget[k]<0)||typeof itinerary.currency_code!=='string'||!itinerary.practical||typeof itinerary.practical!=='object')return J({error:'The generated budget or practical guide was incomplete. Please retry.'},502);
-  if(itinerary.areas.some(a=>!Array.isArray(a.hotel_options))||itinerary.days.some(d=>!d||!Array.isArray(d.activities)||d.activities.length<2||!Array.isArray(d.meals)))return J({error:'The itinerary is missing hotel or daily schedule details. Please retry.'},502);
+  if(itinerary.areas.some(a=>!Array.isArray(a.hotel_options)||a.hotel_options.length<1)||itinerary.days.some(d=>!d||!Array.isArray(d.activities)||d.activities.length<2||!Array.isArray(d.meals)))return J({error:'The itinerary is missing hotel or daily schedule details. Please retry.'},502);
   const expected=[];for(let i=0;i<n;i++){const d=new Date(Date.parse(d1+'T00:00:00Z')+i*864e5);expected.push(d.toISOString().slice(0,10))}
   if(itinerary.days.some((d,i)=>d.date!==expected[i]||!Array.isArray(d.activities)||!Array.isArray(d.meals)))return J({error:'The itinerary dates or daily schedules did not pass validation. Please retry.'},502);
   if(itinerary.areas.length<1||itinerary.areas.length>4||itinerary.days.some(d=>d.activities.length<2))return J({error:'The itinerary is missing essential planning details. Please retry.'},502);
