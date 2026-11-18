@@ -221,6 +221,7 @@ export async function onRequestPost({request,env}){
     deadlineTimer=setTimeout(()=>{emit({type:"error",error:"The research team exceeded its 9-minute safety window. Please retry with fewer travel days or a simpler destination."});cancelled=true;controller.close()},540000);
     (async()=>{
      try{
+      const retryBudget={remaining:10};
       const baseCtx={trip,useSearch,maxBases,nights:dayCount-1,label:"Route architect"};
       const route=await runAgent("route",baseCtx,env,emit,retryBudget);
       const areas=normaliseAreas(route.data.areas,dayCount-1,maxBases);
