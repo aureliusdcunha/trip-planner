@@ -62,11 +62,11 @@ function extractJsonText(value){
 function validateAgent(kind,data,ctx){
  if(!data||typeof data!=="object")return "The "+kind+" researcher returned no structured result.";
  if(kind==="route"&&(!Array.isArray(data.areas)||!data.areas.length))return "The route researcher did not identify overnight bases.";
- if(kind==="flights"&&!Array.isArray(data.flight_options))return "The flight researcher returned an incomplete result.";
- if(kind==="transport"&&!Array.isArray(data.internal_transport))return "The transport researcher returned an incomplete result.";
+ if(kind==="flights"&&(!Array.isArray(data.flight_options)||!data.flight_options.length))return "The flight researcher returned no usable route options.";
+ if(kind==="transport"&&(!Array.isArray(data.internal_transport)||!data.internal_transport.length))return "The transport researcher returned no usable transfer options.";
  if(kind==="stay"&&(!Array.isArray(data.hotel_options)||!data.hotel_options.length))return "The accommodation researcher returned no hotel options.";
- if(kind==="attractions"&&!Array.isArray(data.highlights))return "The attraction researcher returned no experiences.";
- if(kind==="dining"&&!Array.isArray(data.dining))return "The dining researcher returned no recommendations.";
+ if(kind==="attractions"&&(!Array.isArray(data.highlights)||!data.highlights.length))return "The attraction researcher returned no experiences.";
+ if(kind==="dining"&&(!Array.isArray(data.dining)||!data.dining.length))return "The dining researcher returned no recommendations.";
  if(kind==="guide"){
   const keys=["exchange_rate_to_home","international_flight_per_person","local_transport_total","hotel_per_room_per_night","activity_per_person_per_day","food_per_person_per_day","shopping_per_person","contingency_percent"];
   if(!data.practical||!data.budget||keys.some(k=>!Number.isFinite(data.budget[k])||data.budget[k]<0)||!Array.isArray(data.tips)||!Array.isArray(data.caveats))return "The practical/budget researcher returned incomplete data.";
@@ -261,7 +261,7 @@ export async function onRequestPost({request,env}){
     deadlineTimer=setTimeout(()=>{emit({type:"error",error:"The research team exceeded its 9-minute safety window. Please retry with fewer travel days or a simpler destination."});cancelled=true;controller.close()},540000);
     (async()=>{
      try{
-      const retryBudget={remaining:10};
+      // Max 21 days / 4 bases = 37 agent calls; reserve at most 10 retries (47 total, under the 50 Free-plan subrequest limit).\n      const retryBudget={remaining:10};
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
