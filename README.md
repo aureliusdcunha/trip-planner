@@ -36,3 +36,16 @@ When Search is off, agents still work independently but use the model's existing
 Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey). Keep it server-side as a Cloudflare secret; do not add it to the HTML or commit it to the repository.
 
 Gemini API availability, free-tier quotas and pricing depend on Google's current model and account policies. For production, configure rate limiting for `/api/plan` and monitor API usage.
+
+
+## Application versioning
+
+The current release version is maintained in `public/version.json`. The browser reads this manifest and displays the version in the report footer. The manifest is served with `Cache-Control: no-store` so the displayed release number does not remain stale after a deployment.
+
+**Every production deployment must include a version bump in `public/version.json` before merging to `main`.** Use semantic versioning:
+
+- **PATCH** (`1.0.0 → 1.0.1`): bug fixes, reliability improvements and small corrections.
+- **MINOR** (`1.0.0 → 1.1.0`): backward-compatible features and enhancements.
+- **MAJOR** (`1.0.0 → 2.0.0`): breaking changes or substantial incompatible redesigns.
+
+Update `released` to the production release date and `releaseName` to a short description. Keep the version manifest and code change in the same pull request so every production deployment has a traceable version.
