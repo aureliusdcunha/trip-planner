@@ -133,7 +133,7 @@ async function runAgent(kind,ctx,env,send,retryBudget){
   if(!response.ok){
    let text="";try{text=(await response.text()).slice(0,600)}catch{}
    if(ctx.useSearch&&(response.status===400||response.status===403)){
-    throw new Error(label+": Google Search grounding was rejected. Check that billing/grounding is enabled for this Gemini API project. "+text);
+    throw new Error(label+": Gemini rejected the Google Search request (HTTP "+response.status+"). Search grounding may require an eligible billing-enabled project or the provider may have rejected the request configuration. "+text);
    }
    throw new Error(label+": Gemini returned HTTP "+response.status+". "+text);
   }
