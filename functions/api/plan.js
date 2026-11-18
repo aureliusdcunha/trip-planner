@@ -147,6 +147,12 @@ async function runAgent(kind,ctx,env,send,retryBudget){
    let event;try{event=JSON.parse(data)}catch{return}
    const type=event.event_type||lines.find(x=>x.startsWith("event:"))?.slice(6).trim();
    if(type==="error"){streamError=event.error?.message||"Gemini interaction failed.";return}
+   if(type==="step.start"&&event.step?.type==="google_search_call"){
+    const qs=event.step.arguments?.queries||[];
+    qs.forEach(q=>{if(typeof q==="string"&&!queries.includes(q)){queries.push(q);send({type:"agent_search",agent:label,query:q})}});
+   }
+   if(type==="step.start"&&event.step?.type==="google_search_result")collectSources(event.step,sources);
+   if(type==="step.stop"&&event.step)collectSources(event.step,sources);
    if(type==="step.delta"){
     const delta=event.delta||{};
     if(delta.type==="text"&&typeof delta.text==="string")output+=delta.text;
