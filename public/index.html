@@ -11,7 +11,7 @@
 <label class="field">Departing from<input id="from" value="Mumbai" maxlength="60"></label><label class="field wide">Interests / requirements<input id="int" maxlength="250" placeholder="culture, beaches, food, family-friendly, shopping, relaxed pace"></label>
 <label class="field wide research-toggle"><span><input id="webResearch" type="checkbox"> Use Google Search for each specialist researcher</span><small>Optional live web grounding. Google Search may incur API charges and requires a billing-enabled Gemini project.</small></label>
 <div class="field wide"><div><button class="btn" id="generate" type="submit">Create detailed travel report</button> <button class="btn secondary" id="sample" type="button">Try a sample destination</button></div><span class="muted">For planning estimates only. Live prices and availability are not guaranteed.</span></div></form></section>
-<div id="status" class="status" aria-live="polite"></div><div id="report" class="hidden"><header class="hero"><div class="eyebrow">Your personalised journey</div><h2 id="heroTitle"></h2><p id="heroIntro"></p></header><div id="stats" class="stats"></div><nav id="tabs" class="tabs" aria-label="Itinerary sections"></nav><div id="content"></div><p class="footer">This AI-generated plan is a research starting point. Confirm visa and entry requirements for your passport, provider terms, flight schedules, hotel availability, opening hours, local transport and prices before booking. Estimates may change with season, exchange rates and final party composition.</p></div>
+<div id="status" class="status" aria-live="polite"></div><div id="report" class="hidden"><header class="hero"><div class="eyebrow">Your personalised journey</div><h2 id="heroTitle"></h2><p id="heroIntro"></p></header><div id="stats" class="stats"></div><nav id="tabs" class="tabs" aria-label="Itinerary sections"></nav><div id="content"></div><p class="footer">This AI-generated plan is a research starting point. Confirm visa and entry requirements for your passport, provider terms, flight schedules, hotel availability, opening hours, local transport and prices before booking. Estimates may change with season, exchange rates and final party composition. <span id="appVersion" aria-label="Application version">Version 1.0.0</span></p></div>
 </main><script>
 (()=>{'use strict';
 const $=id=>document.getElementById(id);let trip=null,active='Overview';
@@ -91,5 +91,6 @@ $('tripForm').onsubmit=async ev=>{
  }catch(e){$('status').textContent='Could not complete itinerary: '+(e.message||'Please retry.')}
  finally{$('generate').disabled=false}
 };
+fetch('/version.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(info=>{if(info&&/^\\d+\\.\\d+\\.\\d+$/.test(info.version||''))$('appVersion').textContent='Version '+info.version}).catch(()=>{});
 })();
 </script></body></html>
