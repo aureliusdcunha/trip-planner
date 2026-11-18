@@ -3,19 +3,19 @@
 const J = (o, s = 200) => new Response(JSON.stringify(o), {status:s,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 const clip = (v,n) => String(v ?? '').replace(/[\\r\\n]+/g,' ').slice(0,n);
 const DATE = /^\\d{4}-\\d{2}-\\d{2}$/;
-const str={type:'STRING'};
+const str={type:'STRING'};\nconst num={type:'NUMBER'};
 const obj=(properties,required=Object.keys(properties))=>({type:'OBJECT',properties,required});
 const arr=(items)=>({type:'ARRAY',items});
 const schema=obj({
  overview:str, best_time:str, destination_currency:str, currency_code:str, local_context:str,
- route_summary:str, getting_there:str, flight_options:arr(obj({route:str,airlines:str,duration:str,price_estimate:str,booking_advice:str})),
- internal_transport:arr(obj({mode:str,route:str,duration:str,price_estimate:str,pros:str,booking_advice:str})),
- areas:arr(obj({name:str,nights:str,why:str,hotel_options:arr(obj({tier:str,name:str,location:str,price_per_night:str,room_notes:str,why:str,booking_url:str}))})),
- highlights:arr(obj({name:str,area:str,category:str,duration:str,price_estimate:str,why_visit:str,practical_tip:str,booking_url:str})),
- dining:arr(obj({name:str,area:str,cuisine:str,signature:str,price_per_person:str,why_visit:str})),
+ route_summary:str, getting_there:str, flight_options:arr(obj({route:str,airlines:str,duration:str,price_estimate:num,booking_advice:str})),
+ internal_transport:arr(obj({mode:str,route:str,duration:str,price_estimate:num,pros:str,booking_advice:str})),
+ areas:arr(obj({name:str,nights:str,why:str,hotel_options:arr(obj({tier:str,name:str,location:str,price_per_night:num,room_notes:str,why:str,booking_url:str}))})),
+ highlights:arr(obj({name:str,area:str,category:str,duration:str,price_estimate:num,why_visit:str,practical_tip:str,booking_url:str})),
+ dining:arr(obj({name:str,area:str,cuisine:str,signature:str,price_per_person:num,why_visit:str})),
  days:arr(obj({date:str,base:str,title:str,pace:str,activities:arr(obj({time:str,name:str,category:str,description:str,duration:str,transport:str,cost_estimate:str,booking_url:str,child_friendly:str})),meals:arr(obj({meal:str,suggestion:str,price_estimate:str})),overnight:str,day_estimate:str})),
  practical:obj({entry_requirements:str,visa:str,weather:str,connectivity:str,health_safety:str,money:str,local_etiquette:str,packing:str}),
- budget:obj({currency:str,exchange_rate_note:str,international_flights:str,local_transport:str,accommodation:str,activities:str,food:str,shopping_misc:str,contingency:str,grand_total:str,per_person:str,assumptions:arr(str)}),
+ budget:obj({currency:str,home_currency:str,exchange_rate_to_home:num,international_flight_per_person:num,local_transport_total:num,hotel_per_room_per_night:num,activity_per_person_per_day:num,food_per_person_per_day:num,shopping_per_person:num,contingency_percent:num,assumptions:arr(str)}),
  tips:arr(str), caveats:arr(str)
 });
 function validDate(s){if(!DATE.test(s))return false;const d=new Date(s+'T00:00:00Z');return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s}
@@ -39,9 +39,9 @@ export async function onRequestPost({request,env}){
    'HOTELS: suggest up to 3 options per base across budget, mid-range and premium tiers; realistic nightly local-currency ranges, location and room notes for party composition. Never claim availability.',
    'ROUTING: propose bases and nights that add up to trip nights (n-1); avoid unnecessary backtracking. Suggest transport between bases with realistic duration and indicative price.',
    'DAILY PLAN: exactly '+n+' days in date order. Each day 3-5 activities with sensible morning/afternoon/evening time blocks, travel time, approximate duration and cost. Add meals and overnight base. Account for arrival/departure days and realistic fatigue; do not overload.',
-   'BUDGET: estimate totals for the whole party, not per person unless explicitly labelled. Include international flights, local transport, accommodation, activities, food, shopping/misc and contingency. Use destination local currency, then home-currency approximate equivalents only if exchange rate is reliable; otherwise explain conversion limitation. Keep values as readable strings with currency codes.',
+   'BUDGET ENGINE INPUTS: Return numeric estimates in destination local currency: international_flight_per_person is round-trip fare per traveller; local_transport_total is estimated total for this party across the trip; hotel_per_room_per_night is the typical nightly room rate for the selected budget tier; activity_per_person_per_day is average paid activity cost per traveller per day; food_per_person_per_day is meal budget per traveller per day; shopping_per_person is whole-trip allowance per traveller; contingency_percent is 10-20. Provide exchange_rate_to_home as units of selected home currency per 1 unit of destination currency only if reasonably known; otherwise use 0. Do not calculate grand totals: the app computes them from party size, nights and these inputs. Include realistic numeric estimates, no formatted strings.',
    'Include useful local dining suggestions, practical entry/visa, weather, connectivity, safety, money, etiquette and packing notes. Tailor child_friendly notes to children if present; do not assume infants.',
-   'OUTPUT BOUNDS: 2-4 bases; 2-3 hotel options per base; up to 10 highlights; 3-6 dining ideas; 3-5 activities per day; 2-4 internal transport suggestions; 5-8 tips; 2-5 caveats. Concise but useful detail. ISO dates for each day.'
+   'OUTPUT BOUNDS: 2-4 bases; 2-3 hotel options per base; up to 10 highlights; 3-6 dining ideas; 2-3 useful activities per day; 2-4 internal transport suggestions; 5-8 tips; 2-5 caveats. Concise but useful detail. ISO dates for each day.'
   ].join('\\n');
   const model=clip(env.MODEL||'gemini-3.8-flash',80);
   const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{
