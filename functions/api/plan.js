@@ -213,13 +213,17 @@ async function runAgent(kind,ctx,env,send,retryBudget){
  }
  throw new Error(label+": Gemini was temporarily unavailable after retry.");
 }
-async function pool(tasks,limit,worker){
+async function pool(tasks,limit,worker,onFailure){
  let next=0;const results=new Array(tasks.length);
  const runners=Array.from({length:Math.min(limit,tasks.length)},async()=>{
   while(true){
    const i=next++;if(i>=tasks.length)return;
    try{results[i]={ok:true,value:await worker(tasks[i],i)}}
-   catch(error){results[i]={ok:false,error:error?.message||String(error),task:tasks[i]}}
+   catch(error){
+    const failure={ok:false,error:error?.message||String(error),task:tasks[i]};
+    results[i]=failure;
+    if(onFailure)onFailure(failure);
+   }
   }
  });
  await Promise.all(runners);return results;
@@ -278,7 +282,7 @@ export async function onRequestPost({request,env}){
        completed++;
        emit({type:"agent_completed",agent:task.label,completed,total:tasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
-      });
+      },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const specialistFailures=specialistRuns.filter(x=>!x.ok);
       if(specialistFailures.length)throw new Error("These research tasks could not complete: "+specialistFailures.map(x=>x.task.label+" — "+x.error).join("; "));
       const specialistResults=specialistRuns.map(x=>x.value);
@@ -309,7 +313,7 @@ export async function onRequestPost({request,env}){
        daysCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:daysCompleted,total:dayCount,sourceCount:result.sources.length,searchCount:0});
        return result.data.days[0];
-      });
+      },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const dayFailures=dayRuns.filter(x=>!x.ok);
       if(dayFailures.length)throw new Error("These daily plans could not complete: "+dayFailures.map(x=>x.task.label+" — "+x.error).join("; "));
       const dayResults=dayRuns.map(x=>x.value);
