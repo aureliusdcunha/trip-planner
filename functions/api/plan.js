@@ -94,7 +94,7 @@ function promptFor(kind,ctx){
  }
  return "";
 }
-async function runAgent(kind,ctx,env,send){
+async function runAgent(kind,ctx,env,send,retryBudget){
  const label=ctx.label||kind;
  const model=clip(env.MODEL||"gemini-3.8-flash",80);
  const body={
@@ -119,10 +119,11 @@ async function runAgent(kind,ctx,env,send){
     signal:AbortSignal.timeout(110000)
    });
   }catch(err){
-   if(attempt===0&&err?.name!=="TimeoutError"){send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
+   if(attempt===0&&err?.name!=="TimeoutError"&&retryBudget.remaining>0){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
    throw new Error(label+": "+(err?.name==="TimeoutError"?"AI request timed out after 110 seconds.":"Could not connect to Gemini Interactions API."));
   }
-  if(response.status===503&&attempt===0){
+  if(response.status===503&&attempt===0&&retryBudget.remaining>0){
+   retryBudget.remaining--;
    let wait=Math.min(2500,Number(response.headers.get("retry-after"))*1000||1000);
    try{await response.body?.cancel()}catch{}
    send({type:"agent_retry",agent:label,message:"Gemini is overloaded; retrying once."});
@@ -221,7 +222,7 @@ export async function onRequestPost({request,env}){
     (async()=>{
      try{
       const baseCtx={trip,useSearch,maxBases,nights:dayCount-1,label:"Route architect"};
-      const route=await runAgent("route",baseCtx,env,emit);
+      const route=await runAgent("route",baseCtx,env,emit,retryBudget);
       const areas=normaliseAreas(route.data.areas,dayCount-1,maxBases);
       emit({type:"stage",stage:"research",message:"Route confirmed. Launching independent accommodation, attraction, dining, flight, transport and guide researchers.",agentTotal:areas.length*3+3});
       const tasks=[];
@@ -237,7 +238,7 @@ export async function onRequestPost({request,env}){
       const specialistResults=await pool(tasks,5,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed,total:tasks.length});
        const ctx={trip,useSearch,areas,area:task.area,label:task.label};
-       const result=await runAgent(task.kind,ctx,env,emit);
+       const result=await runAgent(task.kind,ctx,env,emit,retryBudget);
        completed++;
        emit({type:"agent_completed",agent:task.label,completed,total:tasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
@@ -265,7 +266,7 @@ export async function onRequestPost({request,env}){
       const dayResults=await pool(dayTasks,5,async(task)=>{
        const relevant=combined.highlights.filter(h=>String(h.area||"").toLowerCase().includes(task.base.toLowerCase())||task.base.toLowerCase().includes(String(h.area||"").toLowerCase())).slice(0,8);
        emit({type:"agent_started",agent:task.label,completed:daysCompleted,total:dayCount});
-       const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit);
+       const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit,retryBudget);
        daysCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:daysCompleted,total:dayCount,sourceCount:result.sources.length,searchCount:0});
        return result.data.days[0];
