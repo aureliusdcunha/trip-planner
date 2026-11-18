@@ -13,7 +13,7 @@ const schema=obj({
  areas:arr(obj({name:str,nights:str,why:str,hotel_options:arr(obj({tier:str,name:str,location:str,price_per_night:num,room_notes:str,why:str,booking_url:str}))})),
  highlights:arr(obj({name:str,area:str,category:str,duration:str,price_estimate:num,why_visit:str,practical_tip:str,booking_url:str})),
  dining:arr(obj({name:str,area:str,cuisine:str,signature:str,price_per_person:num,why_visit:str})),
- days:arr(obj({date:str,base:str,title:str,pace:str,activities:arr(obj({time:str,name:str,category:str,description:str,duration:str,transport:str,cost_estimate:str,booking_url:str,child_friendly:str})),meals:arr(obj({meal:str,suggestion:str,price_estimate:str})),overnight:str,day_estimate:str})),
+ days:arr(obj({date:str,base:str,title:str,pace:str,activities:arr(obj({time:str,name:str,category:str,description:str,duration:str,transport:str,cost_estimate:num,booking_url:str,child_friendly:str})),meals:arr(obj({meal:str,suggestion:str,price_estimate:num})),overnight:str,day_estimate:num})),
  practical:obj({entry_requirements:str,visa:str,weather:str,connectivity:str,health_safety:str,money:str,local_etiquette:str,packing:str}),
  budget:obj({currency:str,home_currency:str,exchange_rate_to_home:num,international_flight_per_person:num,local_transport_total:num,hotel_per_room_per_night:num,activity_per_person_per_day:num,food_per_person_per_day:num,shopping_per_person:num,contingency_percent:num,assumptions:arr(str)}),
  tips:arr(str), caveats:arr(str)
