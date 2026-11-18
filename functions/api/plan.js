@@ -207,7 +207,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
   };
   let readError=null;
   try{
-   while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();frames.forEach(parseFrame);if(streamError)break}
+   while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();frames.forEach(parseFrame)}
    buffer+=decoder.decode();if(buffer.trim())parseFrame(buffer);
   }catch(err){readError=err}
   finally{try{reader.releaseLock()}catch{}releaseRequestSlot(requestGate)}
