@@ -1,184 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Trip Planner</title>
-<style>
-:root{--bg:#faf8f4;--card:#fff;--ink:#1f2933;--mut:#6b7280;--line:#e5e1d8;--acc:#0f766e;--acc2:#e8f3f1;--warn:#b45309;--warnbg:#fef3c7;
-box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14181c;--card:#1c2228;--ink:#e8eaed;--mut:#9aa3ad;--line:#2d353d;--acc:#2dd4bf;--acc2:#12312e;--warn:#fbbf24;--warnbg:#3a2e0e}}
-:root[data-theme="dark"]{--bg:#14181c;--card:#1c2228;--ink:#e8eaed;--mut:#9aa3ad;--line:#2d353d;--acc:#2dd4bf;--acc2:#12312e;--warn:#fbbf24;--warnbg:#3a2e0e}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.wrap{max-width:960px;margin:0 auto;padding:20px 16px 48px}
-h1{font-size:1.7rem;margin:.2em 0}
-.sub{color:var(--mut);margin:0 0 18px}
-form{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mut);gap:4px}
-input,select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
-.full{grid-column:1/-1}
-button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--acc);background:var(--acc);color:#fff;padding:10px 16px;font-weight:600}
-:root[data-theme="dark"] button.go,@media (prefers-color-scheme:dark){button.go{color:#06201d}}
-button.ghost{background:transparent;color:var(--acc)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.chip{padding:5px 11px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:.82rem;font-weight:500}
-.chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
-#status{margin:16px 0;color:var(--mut)}
-.bar{height:4px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:8px}
-.bar i{display:block;height:100%;width:30%;background:var(--acc);animation:s 1.2s infinite ease-in-out}
-@keyframes s{0%{margin-left:-30%}100%{margin-left:100%}}
-.tabs{display:flex;gap:6px;overflow-x:auto;margin:18px 0 12px;padding-bottom:4px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5}
-.tab{white-space:nowrap;background:var(--card);color:var(--ink);border:1px solid var(--line)}
-.tab.on{background:var(--acc);color:#fff;border-color:var(--acc)}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
-.card h3{margin:0 0 4px;font-size:1.02rem}
-.meta{color:var(--mut);font-size:.84rem}
-.tag{display:inline-block;background:var(--acc2);color:var(--acc);border-radius:6px;padding:1px 8px;font-size:.76rem;margin-right:4px}
-.price{font-weight:700;color:var(--acc)}
-h2{font-size:1.15rem;margin:22px 0 8px}
-.warn{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:10px 14px;margin:10px 0;font-size:.9rem}
-.day{border-left:3px solid var(--acc);padding:2px 0 2px 14px;margin:0 0 18px}
-.day ul{margin:6px 0;padding-left:18px}
-.note{font-size:.78rem;color:var(--mut);margin-top:24px}
-.hide{display:none}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>✈️ Trip Planner</h1>
-  <p class="sub">Enter a destination and dates. Get stays, sights, food and a day-by-day plan.</p>
-  <form id="f">
-    <label class="full">Destination<input id="dest" required placeholder="e.g. Thailand: Bangkok, Chiang Mai, Phuket"></label>
-    <label>Start<input id="d1" type="date" required></label>
-    <label>End<input id="d2" type="date" required></label>
-    <label>Travellers<input id="pax" type="number" min="1" max="12" value="2"></label>
-    <label>Budget<select id="bud"><option>Budget</option><option selected>Mid-range</option><option>Luxury</option></select></label>
-    <label>Home currency<select id="cur"><option>INR</option><option>USD</option><option>EUR</option><option>GBP</option><option>AED</option></select></label>
-    <label>Departing from<input id="from" value="Mumbai"></label>
-    <label class="full">Interests (optional)<input id="int" placeholder="beaches, temples, street food, family-friendly, nightlife"></label>
-    <div class="full row">
-      <button class="go" id="go" type="submit">Build my report</button>
-      <button type="button" class="ghost" id="ex">Try: Thailand 10 days</button>
-    </div>
-  </form>
-  <div id="status" aria-live="polite"></div>
-  <div id="out" class="hide">
-    <div class="row"><h2 id="title" style="margin:0;flex:1"></h2><button class="ghost" id="dl">Download .md</button></div>
-    <div class="tabs" id="tabs"></div>
-    <div id="pane"></div>
-    <p class="note">Generated by AI. Prices, hours and availability are estimates. Check hotels, flights and entry rules before booking.</p>
-  </div>
-</div>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#1a1208"><title>Trip Planner — Your Journey, Thoughtfully Planned</title><link rel="stylesheet" href="/template.css"><style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap');
+:root{--gold:#C9A84C;--deep-red:#8B1A1A;--jade:#2D6A4F;--cream:#FAF5E9;--ink:#1A1208;--soft-gold:#F0E0A8;--muted:#8A7A60;--shadow:rgba(26,18,8,.12);--bg:var(--cream);--card:#fff;--line:#e8ddc6;--acc:var(--deep-red);--acc2:#f4ead5}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:15px/1.55 Inter,'DM Sans',sans-serif}.wrap{max-width:1120px;margin:0 auto;padding:28px 18px 56px}h1,h2,h3{font-family:'Playfair Display',Georgia,serif}h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.1;margin:.2em 0}h2{font-size:1.55rem;margin:24px 0 10px}h3{font-size:1.15rem}.sub{color:var(--muted);max-width:760px}
+form{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 6px 24px var(--shadow);gap:14px}label{font-size:.78rem;font-weight:700;color:var(--muted)}input,select{font:inherit;padding:11px;border:1px solid #dfd3bb;border-radius:9px;background:#fff;color:var(--ink)}button{font:inherit;cursor:pointer;border-radius:9px;border:1px solid var(--deep-red);background:var(--deep-red);color:#fff;padding:11px 17px;font-weight:700}button.ghost{background:transparent;color:var(--deep-red)}.tabs{background:var(--cream);gap:8px}.tab{background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:99px}.tab.on{background:var(--deep-red);color:#fff;border-color:var(--deep-red)}.grid{gap:14px}.card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:17px;box-shadow:0 4px 16px var(--shadow)}.card h3{margin:0 0 6px}.meta{color:var(--muted)}.tag{background:#f4ead5;color:#765b2d;border-radius:99px;padding:3px 9px}.price{color:var(--jade);font-weight:800}.day{border-left:3px solid var(--gold);padding:4px 0 4px 16px}.warn{background:#fff5df;color:#805a16;border-left:3px solid #d49a32;border-radius:8px;padding:12px}.note{color:var(--muted)}#status{color:var(--muted)}@media(max-width:650px){.wrap{padding:18px 12px 40px}form{padding:14px}}
+</style></head><body><main class="app">
+<div class="brand">✦ Journey design studio</div><h1>Plan a journey worth remembering.</h1><p class="lead">Build a practical, day-by-day travel report with places to stay, experiences, local food and useful travel guidance — shaped around your dates, budget and group.</p>
+<section class="planner"><form id="f"><label class="wide">Destination<input id="dest" required placeholder="e.g. Japan: Tokyo, Kyoto and Osaka"></label><label>Start date<input id="d1" type="date" required></label><label>End date<input id="d2" type="date" required></label><label>Travellers<input id="pax" type="number" min="1" max="12" value="2"></label><label>Budget<select id="bud"><option>Budget</option><option selected>Mid-range</option><option>Luxury</option></select></label><label>Home currency<select id="cur"><option>INR</option><option>USD</option><option>EUR</option><option>GBP</option><option>AED</option></select></label><label>Departing from<input id="from" value="Mumbai"></label><label class="wide">Interests<input id="int" placeholder="culture, beaches, food, family-friendly, shopping"></label><div class="wide"><button class="btn" id="go" type="submit">Create my travel report</button> <button class="btn alt" id="ex" type="button">Load sample destination</button></div></form></section>
+<div id="status" class="status" aria-live="polite"></div><div id="out" class="hidden"><header class="hero"><div class="eyebrow">Your personalised journey</div><h2 id="heroTitle"></h2><p id="heroText"></p></header><div class="stats" id="stats"></div><nav class="tabs" id="tabs"></nav><div id="pane"></div><p class="footer">AI-generated planning guidance. Prices, schedules, opening hours, ratings and availability can change. Confirm details with providers and official sources before booking.</p></div></main>
 <script>
-(function(){
-var $=function(i){return document.getElementById(i)};
-var data=null,tab='Overview',filter='All';
-function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
-function add(p){for(var i=1;i<arguments.length;i++)if(arguments[i])p.appendChild(arguments[i]);return p}
-function iso(d){return d.toISOString().slice(0,10)}
-(function(){var t=new Date();t.setDate(t.getDate()+30);var e=new Date(t);e.setDate(e.getDate()+9);$('d1').value=iso(t);$('d2').value=iso(e)})();
-$('ex').onclick=function(){$('dest').value='Thailand: Bangkok, Chiang Mai, Phuket and Krabi';$('int').value='temples, beaches, street food, family-friendly';var s=new Date($('d1').value);var e=new Date(s);e.setDate(e.getDate()+9);$('d2').value=iso(e)};
-
-function prompt(){
-  var s=new Date($('d1').value),e=new Date($('d2').value),n=Math.round((e-s)/864e5)+1;
-  return {n:n,body:{dest:$('dest').value,d1:$('d1').value,d2:$('d2').value,pax:$('pax').value,bud:$('bud').value,cur:$('cur').value,from:$('from').value,int:$('int').value}};
-}
-
-$('f').onsubmit=async function(ev){
-  ev.preventDefault();
-  var p=prompt();
-  if(p.n<1||p.n>21){$('status').textContent='Pick a range of 1 to 21 days.';return}
-  var st=$('status');st.textContent='';add(st,el('div','', 'Building your report…'),(function(){var b=el('div','bar');b.appendChild(el('i'));return b})());
-  $('go').disabled=true;$('out').classList.add('hide');
-  try{
-    var resp=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p.body)});
-    var raw=await resp.text(),r;
-    try { r=JSON.parse(raw); }
-    catch(parseErr) {
-      var preview=raw.replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim().slice(0,180);
-      throw new Error('Server returned a non-JSON response (HTTP '+resp.status+'). '+(preview||'Empty response')+' Check that the latest Cloudflare deployment includes the Pages Function.');
-    }
-    if(!resp.ok){var er=new Error(r.error||'Request failed');er.status=resp.status;throw er}
-    if(typeof r.text!=='string'||!r.text.trim()) throw new Error('The server returned an empty itinerary. Please retry.');
-    try { data=JSON.parse(r.text); }
-    catch(parseErr) { throw new Error('The itinerary response was incomplete or invalid. Please retry; no partial report was displayed.'); }
-    if(!data||!Array.isArray(data.days)||data.days.length!==p.n||
-       !Array.isArray(data.areas)||!Array.isArray(data.attractions)||
-       !Array.isArray(data.food)||!Array.isArray(data.tips)||!Array.isArray(data.warnings)) {
-      throw new Error('The generated itinerary failed validation. Please retry.');
-    }
-    st.textContent='';tab='Overview';filter='All';render();
-  }catch(x){
-    st.textContent=(x&&x.message)?x.message:(x&&x.status===429?'Too many requests. Wait a minute and retry.':'Could not build the report. Please try again.');
-  }
-  $('go').disabled=false;
-};
-
-var TABS=['Overview','Stay','See & Do','Eat','Day plan','Tips'];
-function render(){
-  $('out').classList.remove('hide');
-  $('title').textContent=$('dest').value+' · '+$('d1').value+' → '+$('d2').value;
-  var tb=$('tabs');tb.textContent='';
-  TABS.forEach(function(n){var b=el('button','tab'+(n===tab?' on':''),n);b.type='button';b.onclick=function(){tab=n;render()};tb.appendChild(b)});
-  var pane=$('pane');pane.textContent='';
-  var d=data;
-  if(tab==='Overview'){
-    add(pane,el('p','',d.overview||''));
-    var g=el('div','grid');
-    [['Best time',d.best_time],['Currency',d.currency],['Budget / day',d.budget_per_day],['Getting there',d.getting_there],['Getting around',d.getting_around]].forEach(function(x){if(x[1]){var c=el('div','card');add(c,el('h3','',x[0]),el('div','',x[1]));g.appendChild(c)}});
-    pane.appendChild(g);
-    (d.warnings||[]).forEach(function(w){pane.appendChild(el('div','warn','⚠️ '+w))});
-  }
-  if(tab==='Stay'){
-    (d.areas||[]).forEach(function(a){
-      add(pane,el('h2','',a.name),el('p','meta',a.why||''));
-      var g=el('div','grid');
-      (a.stay||[]).forEach(function(s){var c=el('div','card');add(c,el('h3','',s.name),add(el('div'),el('span','tag',s.type||'stay'),el('span','price',s.price||'')),el('p','meta',s.why||''));g.appendChild(c)});
-      pane.appendChild(g);
-    });
-  }
-  if(tab==='See & Do'){
-    var at=d.attractions||[],types=['All'];
-    at.forEach(function(a){if(a.type&&types.indexOf(a.type)<0)types.push(a.type)});
-    var r=el('div','row');r.style.marginBottom='12px';
-    types.forEach(function(t){var b=el('button','chip'+(t===filter?' on':''),t);b.type='button';b.onclick=function(){filter=t;render()};r.appendChild(b)});
-    pane.appendChild(r);
-    var g=el('div','grid');
-    at.filter(function(a){return filter==='All'||a.type===filter}).forEach(function(a){
-      var c=el('div','card');add(c,el('h3','',a.name),add(el('div'),el('span','tag',a.type||''),el('span','meta',a.area||'')),el('div','meta','⏱ '+(a.duration||'?')+' · 🎟 '+(a.cost||'?')),el('p','',a.tip||''));g.appendChild(c)});
-    pane.appendChild(g);
-  }
-  if(tab==='Eat'){
-    var g=el('div','grid');
-    (d.food||[]).forEach(function(f){var c=el('div','card');add(c,el('h3','',f.name),el('div','',f.dish||''),el('div','price',f.price||''));g.appendChild(c)});
-    pane.appendChild(g);
-  }
-  if(tab==='Day plan'){
-    (d.days||[]).forEach(function(x,i){
-      var w=el('div','day');add(w,el('h3','','Day '+(i+1)+' · '+(x.date||'')+' · '+(x.title||'')));
-      var u=el('ul');(x.plan||[]).forEach(function(s){u.appendChild(el('li','',s))});w.appendChild(u);
-      if(x.stay)w.appendChild(el('div','meta','🛏 '+x.stay));
-      pane.appendChild(w);
-    });
-  }
-  if(tab==='Tips'){
-    var u=el('ul');(d.tips||[]).forEach(function(s){u.appendChild(el('li','',s))});pane.appendChild(u);
-    (d.warnings||[]).forEach(function(w){pane.appendChild(el('div','warn','⚠️ '+w))});
-  }
-}
-
-$('dl').onclick=async function(){
-  if(!data)return;
-  var m='# '+$('dest').value+'\n'+$('d1').value+' to '+$('d2').value+'\n\n'+(data.overview||'')+'\n\n';
-  (data.areas||[]).forEach(function(a){m+='## Stay: '+a.name+'\n';(a.stay||[]).forEach(function(s){m+='- '+s.name+' ('+s.price+')\n'})});
-  m+='\n## See & Do\n';(data.attractions||[]).forEach(function(a){m+='- '+a.name+' ['+a.type+'], '+a.cost+'\n'});
-  m+='\n## Days\n';(data.days||[]).forEach(function(x,i){m+='### Day '+(i+1)+' '+x.date+': '+x.title+'\n';(x.plan||[]).forEach(function(s){m+='- '+s+'\n'})});
-  var u=URL.createObjectURL(new Blob([m],{type:'text/markdown'})),l=document.createElement('a');l.href=u;l.download='trip-plan.md';l.click();URL.revokeObjectURL(u);
-};
+(()=>{'use strict';const $=id=>document.getElementById(id);let data=null,active='Overview';const tabs=['Overview','Flights & transport','Where to stay','Experiences','Food','Day-by-day','Travel notes','Budget'];function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text??'');return n}function add(p,...c){c.filter(Boolean).forEach(x=>p.append(x));return p}function card(title,body,meta,price){const c=node('article','item');add(c,node('h3','',title));if(meta)c.append(node('div','',meta));if(body)c.append(node('p','muted',body));if(price)c.append(node('div','price',price));return c}function section(title){const s=node('section','section');s.append(node('h2','',title));return s}function list(items){const ul=node('ul');(items||[]).forEach(x=>ul.append(node('li','',x)));return ul}
+function render(){ $('out').classList.remove('hidden');$('heroTitle').textContent=$('dest').value+' · '+$('d1').value+' to '+$('d2').value;$('heroText').textContent=data.overview||'A destination plan organised around your travel dates and preferences.';const stats=[[(data.days.length||0)+' days','Journey length'],[(data.areas||[]).length+' areas','Suggested bases'],[$('pax').value,'Travellers'],[data.budget_per_day||'Indicative','Daily budget']];$('stats').replaceChildren(...stats.map(x=>{const d=node('div','stat');add(d,node('b','',x[0]),node('span','',x[1]));return d}));$('tabs').replaceChildren(...tabs.map(t=>{const b=node('button',active===t?'active':'',t);b.type='button';b.onclick=()=>{active=t;renderPane()};return b}));renderPane()}
+function renderPane(){const p=$('pane');p.replaceChildren();let s;if(active==='Overview'){s=section('At a glance');const g=node('div','grid');[['Best time to visit',data.best_time],['Local currency',data.currency],['Getting there',data.getting_there],['Getting around',data.getting_around]].forEach(x=>g.append(card(x[0],x[1])));s.append(g);(data.warnings||[]).forEach(w=>s.append(node('div','warning','⚠ '+w)));p.append(s)}
+if(active==='Flights & transport'){s=section('Getting there and moving around');add(s,card('International travel',data.getting_there),card('Local transport',data.getting_around));p.append(s)}
+if(active==='Where to stay'){(data.areas||[]).forEach(a=>{s=section(a.name);if(a.why)s.append(node('p','muted',a.why));const g=node('div','grid');(a.stay||[]).forEach(h=>g.append(card(h.name,h.why,h.type,h.price)));s.append(g);p.append(s)})}
+if(active==='Experiences'){s=section('Places and experiences');const g=node('div','grid');(data.attractions||[]).forEach(a=>g.append(card(a.name,a.tip,(a.area||'')+' · '+(a.type||'')+' · '+(a.duration||''),a.cost)));s.append(g);p.append(s)}
+if(active==='Food'){s=section('Food worth seeking out');const g=node('div','grid');(data.food||[]).forEach(f=>g.append(card(f.name,f.dish,'',f.price)));s.append(g);p.append(s)}
+if(active==='Day-by-day'){s=section('Your daily itinerary');(data.days||[]).forEach((d,i)=>{const box=node('details','day');if(i===0)box.open=true;add(box,node('summary','', 'Day '+(i+1)+' · '+(d.date||'')+' · '+(d.title||'')),list(d.plan));if(d.stay)box.append(node('p','muted','Overnight: '+d.stay));s.append(box)});p.append(s)}
+if(active==='Travel notes'){s=section('Practical tips');s.append(list(data.tips));(data.warnings||[]).forEach(w=>s.append(node('div','warning','⚠ '+w)));p.append(s)}
+if(active==='Budget'){s=section('Budget planning');s.append(node('p','muted','Indicative costs are generated in the destination currency and your selected home currency where available. Treat them as planning estimates, not live quotes.'));const g=node('div','grid');g.append(card('Daily budget',data.budget_per_day),card('Currency',data.currency));s.append(g);p.append(s)}}
+function iso(d){return d.toISOString().slice(0,10)}const start=new Date();start.setDate(start.getDate()+30);const end=new Date(start);end.setDate(end.getDate()+9);$('d1').value=iso(start);$('d2').value=iso(end);$('ex').onclick=()=>{$('dest').value='Thailand: Bangkok, Chiang Mai, Phuket and Krabi';$('int').value='temples, beaches, street food, family-friendly';const d=new Date($('d1').value);d.setDate(d.getDate()+9);$('d2').value=iso(d)};
+$('f').onsubmit=async ev=>{ev.preventDefault();const n=Math.round((Date.parse($('d2').value)-Date.parse($('d1').value))/86400000)+1;if(n<1||n>21){$('status').textContent='Choose a trip between 1 and 21 days.';return}$('go').disabled=true;$('out').classList.add('hidden');$('status').textContent='Building your itinerary…';try{const r=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({dest:$('dest').value,d1:$('d1').value,d2:$('d2').value,pax:$('pax').value,bud:$('bud').value,cur:$('cur').value,from:$('from').value,int:$('int').value})});const raw=await r.text();let j;try{j=JSON.parse(raw)}catch{throw Error('The server returned an unexpected response (HTTP '+r.status+'). Please retry shortly.')}if(!r.ok)throw Error(j.error||'Unable to generate the itinerary.');data=JSON.parse(j.text||'{}');if(!Array.isArray(data.days)||data.days.length!==n||!Array.isArray(data.areas)||!Array.isArray(data.attractions)||!Array.isArray(data.food)||!Array.isArray(data.tips)||!Array.isArray(data.warnings))throw Error('The generated report did not pass validation. Please retry.');active='Overview';$('status').textContent='';render()}catch(e){$('status').textContent=e.message||'Unable to create your report.'}finally{$('go').disabled=false}};
 })();
-</script>
-</body>
-</html>
+</script></body></html>
