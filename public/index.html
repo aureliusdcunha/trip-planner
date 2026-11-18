@@ -45,13 +45,13 @@ async function requestPhase(payload){
  const contentType=r.headers.get('content-type')||'';
  if(contentType.includes('text/event-stream')&&r.body){
   const reader=r.body.getReader(),decoder=new TextDecoder();let buffer='',data=null,failure=null;
-  const consume=frame=>{const lines=frame.split(/\\r?\\n/),line=lines.find(x=>x.startsWith('data:'));if(!line)return;let msg;try{msg=JSON.parse(line.slice(5).trim())}catch{return}
+  const consume=frame=>{const lines=frame.split(/\r?\n/),line=lines.find(x=>x.startsWith('data:'));if(!line)return;let msg;try{msg=JSON.parse(line.slice(5).trim())}catch{return}
    if(msg.type==='progress'&&msg.message)$('status').textContent=msg.message;
    else if(msg.type==='heartbeat')$('status').textContent='Still waiting for the AI response for '+payload.phase+'… connection is active.';
    else if(msg.type==='result'&&msg.phase===payload.phase)data=msg.data;
    else if(msg.type==='error')failure=msg.error||('Unable to generate '+payload.phase+'.');
   };
-  while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\\r?\\n\\r?\\n/);buffer=frames.pop();frames.forEach(consume)}
+  while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();frames.forEach(consume)}
   buffer+=decoder.decode();if(buffer.trim())consume(buffer);
   if(failure)throw Error(failure);
   if(!data)throw Error('The '+payload.phase+' stream ended before a complete result arrived. Please retry this section.');
