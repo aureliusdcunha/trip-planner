@@ -96,8 +96,9 @@ export async function onRequestPost({request,env}){
         method:"POST",headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},body:requestBody,signal:controller.signal
        });
        if(r.status!==503||attempt===1)break;
-       send({type:"progress",phase,message:"The AI provider is busy; retrying this section once."});
        const wait=Math.min(3000,Number(r.headers.get("retry-after"))*1000||1500);
+       try{await r.body?.cancel()}catch{}
+       send({type:"progress",phase,message:"The AI provider is busy; retrying this section once."});
        await new Promise(resolve=>setTimeout(resolve,wait));
       }
       if(!r.ok){
