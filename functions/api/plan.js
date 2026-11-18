@@ -92,7 +92,7 @@ export async function onRequestPost({request,env}){
       const requestBody=JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",responseSchema:schemas[phase],maxOutputTokens,thinkingConfig:{thinkingLevel:"LOW"}}});
       let r;
       for(let attempt=0;attempt<2;attempt++){
-       r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
+       r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":streamGenerateContent?alt=sse",{
         method:"POST",headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},body:requestBody,signal:controller.signal
        });
        if(r.status!==503||attempt===1)break;
@@ -105,12 +105,36 @@ export async function onRequestPost({request,env}){
        let providerBody={};try{providerBody=await r.json()}catch{}
        send({type:"error",phase,error:errorText(providerBody,r.status),providerStatus:r.status});return;
       }
-      const payload=await r.json(),candidate=payload.candidates?.[0];
-      if(!candidate){send({type:"error",phase,error:"The AI provider returned no content for the "+phase+" section."});return}
-      if(candidate.finishReason==="MAX_TOKENS"){send({type:"error",phase,error:"The "+phase+" section exceeded its generation limit. Please retry."});return}
-      if(candidate.finishReason&&candidate.finishReason!=="STOP"){send({type:"error",phase,error:"The AI could not complete the "+phase+" section ("+candidate.finishReason+")."});return}
-      const output=(candidate.content?.parts||[]).filter(x=>typeof x.text==="string").map(x=>x.text).join("").trim();
-      let data;try{data=JSON.parse(output)}catch{send({type:"error",phase,error:"The AI returned incomplete JSON for the "+phase+" section. Please retry."});return}
+      if(!r.body){send({type:"error",phase,error:"The AI provider returned an empty stream for the "+phase+" section."});return}
+      const upstreamReader=r.body.getReader(),upstreamDecoder=new TextDecoder();
+      let upstreamBuffer="",output="",finishReason="",upstreamError=null,receivedChunks=0;
+      const acceptProviderFrame=frame=>{
+       const dataLines=frame.split(/\\r?\\n/).filter(line=>line.startsWith("data:")).map(line=>line.slice(5).trim());
+       if(!dataLines.length)return;
+       const raw=dataLines.join("\\n");
+       if(raw==="[DONE]")return;
+       let part;try{part=JSON.parse(raw)}catch{return}
+       if(part.error){upstreamError=part.error.message||part.error.status||"Gemini streaming error";return}
+       const candidate=part.candidates?.[0];if(!candidate)return;
+       if(candidate.finishReason)finishReason=candidate.finishReason;
+       const delta=(candidate.content?.parts||[]).filter(item=>typeof item.text==="string").map(item=>item.text).join("");
+       if(delta){output+=delta;receivedChunks++;send({type:"progress",phase,message:"Gemini is composing the "+phase+" section… ("+receivedChunks+" response chunks received)."});}
+      };
+      try{
+       while(true){
+        const next=await upstreamReader.read();if(next.done)break;
+        upstreamBuffer+=upstreamDecoder.decode(next.value,{stream:true});
+        const frames=upstreamBuffer.split(/\\r?\\n\\r?\\n/);upstreamBuffer=frames.pop();
+        for(const frame of frames)acceptProviderFrame(frame);
+       }
+       upstreamBuffer+=upstreamDecoder.decode();
+       if(upstreamBuffer.trim())acceptProviderFrame(upstreamBuffer);
+      }finally{try{upstreamReader.releaseLock()}catch{}}
+      if(upstreamError){send({type:"error",phase,error:"Gemini streaming error: "+String(upstreamError).slice(0,250)});return}
+      if(!output.trim()){send({type:"error",phase,error:"Gemini closed the stream without generating text for the "+phase+" section. Please retry."});return}
+      if(finishReason==="MAX_TOKENS"){send({type:"error",phase,error:"The "+phase+" section exceeded its generation limit. Please retry."});return}
+      if(finishReason&&finishReason!=="STOP"){send({type:"error",phase,error:"The AI could not complete the "+phase+" section ("+finishReason+"). Please retry."});return}
+      let data;try{data=JSON.parse(output.trim())}catch{send({type:"error",phase,error:"Gemini ended its stream before completing valid JSON for the "+phase+" section. Please retry."});return}
       const dates=phase==="days"?(b.dayDates||[]):[];
       const issue=validate(data,phase,dates);if(issue){send({type:"error",phase,error:issue+" Please retry this section."});return}
       send({type:"result",phase,data});
