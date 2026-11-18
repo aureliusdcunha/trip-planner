@@ -2,8 +2,8 @@
 // Each request generates one bounded itinerary section. The browser orchestrates
 // the sections so no single request waits for a full long-form report.
 const J=(o,s=200)=>new Response(JSON.stringify(o),{status:s,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
-const clip=(v,n)=>String(v??"").replace(/[\\r\\n]+/g," ").slice(0,n);
-const DATE=/^\\d{4}-\\d{2}-\\d{2}$/;
+const clip=(v,n)=>String(v??"").replace(/[\r\n]+/g," ").slice(0,n);
+const DATE=/^\d{4}-\d{2}-\d{2}$/;
 const str={type:"STRING"},num={type:"NUMBER"};
 const obj=(properties,required=Object.keys(properties))=>({type:"OBJECT",properties,required});
 const arr=items=>({type:"ARRAY",items});
