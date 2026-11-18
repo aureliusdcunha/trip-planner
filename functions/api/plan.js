@@ -323,7 +323,7 @@ export async function onRequestPost({request,env}){
       const specialistRuns=await pool(tasks,5,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed,total:tasks.length});
        const ctx={trip,useSearch,areas,area:task.area,label:task.label};
-       const result=await runAgent(task.kind,ctx,env,emit,retryBudget);
+       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget);
        completed++;
        emit({type:"agent_completed",agent:task.label,completed,total:tasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
