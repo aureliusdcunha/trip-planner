@@ -102,9 +102,14 @@ $('f').onsubmit=async function(ev){
       throw new Error('Server returned a non-JSON response (HTTP '+resp.status+'). '+(preview||'Empty response')+' Check that the latest Cloudflare deployment includes the Pages Function.');
     }
     if(!resp.ok){var er=new Error(r.error||'Request failed');er.status=resp.status;throw er}
-    var t=(r.text||'').replace(/\`\`\`json|\`\`\`/g,'').trim();
-    var a=t.indexOf('{'),b=t.lastIndexOf('}');
-    data=JSON.parse(t.slice(a,b+1));
+    if(typeof r.text!=='string'||!r.text.trim()) throw new Error('The server returned an empty itinerary. Please retry.');
+    try { data=JSON.parse(r.text); }
+    catch(parseErr) { throw new Error('The itinerary response was incomplete or invalid. Please retry; no partial report was displayed.'); }
+    if(!data||!Array.isArray(data.days)||data.days.length!==p.n||
+       !Array.isArray(data.areas)||!Array.isArray(data.attractions)||
+       !Array.isArray(data.food)||!Array.isArray(data.tips)||!Array.isArray(data.warnings)) {
+      throw new Error('The generated itinerary failed validation. Please retry.');
+    }
     st.textContent='';tab='Overview';filter='All';render();
   }catch(x){
     st.textContent=(x&&x.message)?x.message:(x&&x.status===429?'Too many requests. Wait a minute and retry.':'Could not build the report. Please try again.');
