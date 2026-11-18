@@ -262,19 +262,35 @@ export async function onRequestPost({request,env}){
     (async()=>{
      try{
       const retryBudget={remaining:10};
-      const baseCtx={trip,useSearch,maxBases,nights:dayCount-1,label:"Route architect"};
-      const route=await runAgent("route",baseCtx,env,emit,retryBudget);
+      // Route, flight and practical/budget research are independent and start together.
+      const openingTasks=[
+       {kind:"route",label:"Route architect"},
+       {kind:"flights",label:"Flight researcher"},
+       {kind:"guide",label:"Practical guide & budget researcher"}
+      ];
+      let openingCompleted=0;
+      emit({type:"stage",stage:"opening",message:"Launching route, flight and budget specialists in parallel…",agentTotal:openingTasks.length});
+      const openingRuns=await pool(openingTasks,3,async(task)=>{
+       emit({type:"agent_started",agent:task.label,completed:openingCompleted,total:openingTasks.length});
+       const ctx={trip,useSearch,maxBases,nights:dayCount-1,label:task.label};
+       const result=await runAgent(task.kind,ctx,env,emit,retryBudget);
+       openingCompleted++;
+       emit({type:"agent_completed",agent:task.label,completed:openingCompleted,total:openingTasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
+       return {...task,...result};
+      },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
+      const openingFailures=openingRuns.filter(x=>!x.ok);
+      if(openingFailures.length)throw new Error("These initial research tasks could not complete: "+openingFailures.map(x=>x.task.label+" — "+x.error).join("; "));
+      const openingResults=openingRuns.map(x=>x.value);
+      const route=openingResults.find(x=>x.kind==="route");
       const areas=normaliseAreas(route.data.areas,dayCount-1,maxBases);
-      emit({type:"stage",stage:"research",message:"Route confirmed. Launching independent accommodation, attraction, dining, flight, transport and guide researchers.",agentTotal:areas.length*3+3});
+      emit({type:"stage",stage:"research",message:"Route confirmed. Launching area-specific stay, attraction, dining and local transport researchers.",agentTotal:areas.length*3+1});
       const tasks=[];
       areas.forEach((area,index)=>{
        tasks.push({kind:"stay",area,index,label:"Stay researcher · "+area.name});
        tasks.push({kind:"attractions",area,index,label:"Attractions researcher · "+area.name});
        tasks.push({kind:"dining",area,index,label:"Dining researcher · "+area.name});
       });
-      tasks.push({kind:"flights",label:"Flight researcher"});
       tasks.push({kind:"transport",label:"Transport researcher"});
-      tasks.push({kind:"guide",label:"Practical guide & budget researcher"});
       let completed=0;
       const specialistRuns=await pool(tasks,5,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed,total:tasks.length});
@@ -286,7 +302,7 @@ export async function onRequestPost({request,env}){
       },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const specialistFailures=specialistRuns.filter(x=>!x.ok);
       if(specialistFailures.length)throw new Error("These research tasks could not complete: "+specialistFailures.map(x=>x.task.label+" — "+x.error).join("; "));
-      const specialistResults=specialistRuns.map(x=>x.value);
+      const specialistResults=[...openingResults.filter(x=>x.kind!=="route"),...specialistRuns.map(x=>x.value)];
       const combined={
        ...route.data,
        areas:areas.map(area=>{
