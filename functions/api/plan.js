@@ -1,9 +1,10 @@
 // Cloudflare Pages Function: POST /api/plan
 // Gemini returns destination-specific data only. The browser owns all presentation.
 const J = (o, s = 200) => new Response(JSON.stringify(o), {status:s,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
-const clip = (v,n) => String(v ?? '').replace(/[\\r\\n]+/g,' ').slice(0,n);
-const DATE = /^\\d{4}-\\d{2}-\\d{2}$/;
-const str={type:'STRING'};\nconst num={type:'NUMBER'};
+const clip = (v,n) => String(v ?? '').replace(/[\r\n]+/g,' ').slice(0,n);
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const str={type:'STRING'};
+const num={type:'NUMBER'};
 const obj=(properties,required=Object.keys(properties))=>({type:'OBJECT',properties,required});
 const arr=(items)=>({type:'ARRAY',items});
 const schema=obj({
@@ -42,7 +43,7 @@ export async function onRequestPost({request,env}){
    'BUDGET ENGINE INPUTS: Return numeric estimates in destination local currency: international_flight_per_person is round-trip fare per traveller; local_transport_total is estimated total for this party across the trip; hotel_per_room_per_night is the typical nightly room rate for the selected budget tier; activity_per_person_per_day is average paid activity cost per traveller per day; food_per_person_per_day is meal budget per traveller per day; shopping_per_person is whole-trip allowance per traveller; contingency_percent is 10-20. Provide exchange_rate_to_home as units of selected home currency per 1 unit of destination currency only if reasonably known; otherwise use 0. Do not calculate grand totals: the app computes them from party size, nights and these inputs. Include realistic numeric estimates, no formatted strings.',
    'Include useful local dining suggestions, practical entry/visa, weather, connectivity, safety, money, etiquette and packing notes. Tailor child_friendly notes to children if present; do not assume infants.',
    'OUTPUT BOUNDS: 2-4 bases; 2-3 hotel options per base; up to 10 highlights; 3-6 dining ideas; 2-3 useful activities per day; 2-4 internal transport suggestions; 5-8 tips; 2-5 caveats. Concise but useful detail. ISO dates for each day.'
-  ].join('\\n');
+  ].join('\n');
   const model=clip(env.MODEL||'gemini-3.8-flash',80);
   const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{
    method:'POST',headers:{'content-type':'application/json','x-goog-api-key':env.GEMINI_API_KEY},
