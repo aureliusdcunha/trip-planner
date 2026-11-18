@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "released": "2026-11-18",
-  "releaseName": "Parallel research agents with automatic model failover"
+  "releaseName": "Quota failover, overload retries and request throttling"
 }

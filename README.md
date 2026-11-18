@@ -19,14 +19,22 @@ The form includes an optional **Use Google Search for each specialist researcher
 
 When Search is off, agents still work independently but use the model's existing knowledge rather than live web grounding. Treat their prices and availability as indicative, not live quotes.
 
-### Automatic model quota fallback
+### Automatic model quota and capacity fallback
 
-The primary model defaults to `gemini-3.8-flash`. If Gemini returns HTTP 429, all agents in that itinerary switch to `gemini-3.5-flash-lite` for the rest of the run. This model is supported by the Interactions API and is designed for high-volume agentic tasks. The fallback is shared across agents so the application does not continue sending requests to a model whose quota is exhausted. If the fallback model is also rate-limited, the app returns the provider's quota error with guidance to wait for reset or enable billing.
+The primary model defaults to `gemini-3.8-flash`. Each itinerary uses a shared model chain:
 
-- Optional Cloudflare environment variable `MODEL` selects the primary model.
-- Optional `FALLBACK_MODEL` selects the quota fallback; default: `gemini-3.5-flash-lite`.
-- On a Free Tier quota failure, Google Search grounding is disabled after switching because Google lists Search grounding as unavailable on the fallback model's Free Tier. The report explains this and labels pricing/availability as estimates.
-- A request budget caps each itinerary to fewer than 50 Gemini API subrequests on the Cloudflare Workers Free plan.
+1. `gemini-3.8-flash` (primary)
+2. `gemini-3.5-flash-lite` (first fallback)
+3. `gemini-3.1-flash-lite` (second fallback)
+
+HTTP 429 quota failures immediately advance to the next model. HTTP 503/high-demand responses and equivalent streaming errors receive one bounded exponential-backoff retry, then advance to the next model if capacity remains unavailable. Concurrent calls share the same current model, so once one researcher switches, waiting and subsequent researchers use the new model. A request gate limits concurrent Gemini calls to two and spaces their starts to reduce burst load.
+
+- Optional Cloudflare variable `MODEL` selects the primary model.
+- Optional `FALLBACK_MODEL` and `TERTIARY_MODEL` select the two fallback models.
+- When a Free Tier quota response is detected, Google Search grounding is disabled on fallback models because it is unavailable for those models on the Free Tier. The report explains this limitation and records all models used.
+- A shared request budget caps each itinerary below 50 Gemini API subrequests on the Cloudflare Workers Free plan.
+- If all configured models are quota-limited or unavailable, the app returns a clear error; it cannot guarantee service availability during a provider-wide outage.
+
 
 ## Project structure
 
@@ -39,7 +47,7 @@ The primary model defaults to `gemini-3.8-flash`. If Gemini returns HTTP 429, al
 1. Connect this GitHub repository to a Cloudflare Pages project.
 2. Set the build command to **none** and the build output directory to `public`.
 3. In **Settings → Variables and Secrets**, add `GEMINI_API_KEY` as an encrypted secret.
-4. Optionally set `MODEL` as a plain-text environment variable (default `gemini-3.8-flash`) and `FALLBACK_MODEL` (default `gemini-3.5-flash-lite`).
+4. Optionally set `MODEL` (default `gemini-3.8-flash`), `FALLBACK_MODEL` (default `gemini-3.5-flash-lite`) and `TERTIARY_MODEL` (default `gemini-3.1-flash-lite`) as plain-text Cloudflare variables.
 5. Deploy or trigger a new deployment after adding the secret.
 
 Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey). Keep it server-side as a Cloudflare secret; do not add it to the HTML or commit it to the repository.

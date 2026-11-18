@@ -95,77 +95,90 @@ function promptFor(kind,ctx){
  }
  return "";
 }
-async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget){
- const label=ctx.label||kind;
- const sources=[],queries=[];
- for(let attempt=0;attempt<4;attempt++){
-  const model=modelState.current;
-  const useSearch=ctx.useSearch&&!(modelState.freeTier&&model===modelState.fallback);
+function advanceModel(modelState,failedModel){
+ const current=modelState.models[modelState.index];
+ if(current===failedModel&&modelState.index<modelState.models.length-1)modelState.index++;
+ const next=modelState.models[modelState.index];
+ return next!==failedModel?next:null;
+}
+function createRequestGate(limit,spacingMs){return {limit,spacingMs,active:0,queue:[],nextStartAt:0}}
+async function acquireRequestSlot(gate){
+ if(gate.active<gate.limit&&gate.queue.length===0)gate.active++;
+ else await new Promise(resolve=>gate.queue.push(resolve));
+ const now=Date.now(),wait=Math.max(0,gate.nextStartAt-now);
+ gate.nextStartAt=Math.max(now,gate.nextStartAt)+gate.spacingMs;
+ if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+}
+function releaseRequestSlot(gate){
+ if(gate.queue.length){const next=gate.queue.shift();next()}
+ else gate.active=Math.max(0,gate.active-1);
+}
+function isCapacityError(message){
+ return /high demand|spikes? in demand|currently experiencing|capacity|overload|resource_exhausted|temporar|unavailable|gateway|server busy/i.test(String(message||""));
+}
+async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
+ const label=ctx.label||kind,sources=[],queries=[];
+ let lastModel="",capacityRetriesForModel=0;
+ for(let attempt=0;attempt<12;attempt++){
+  await acquireRequestSlot(requestGate);
+  const model=modelState.models[modelState.index];
+  if(model!==lastModel){lastModel=model;capacityRetriesForModel=0}
+  const modelIsFallback=modelState.index>0;
+  const useSearch=ctx.useSearch&&!(modelState.freeTier&&modelIsFallback);
   if(ctx.useSearch&&!useSearch&&!modelState.searchNoticeSent){
    modelState.searchNoticeSent=true;
-   send({type:"model_notice",message:"Google Search grounding is unavailable on the free tier for the fallback model. Continuing with model knowledge; prices and availability remain estimates."});
+   send({type:"model_notice",message:"The Free Tier does not provide Google Search grounding for the fallback models. Continuing with model knowledge; prices and availability remain estimates."});
   }
+  if(requestBudget.remaining<=0){releaseRequestSlot(requestGate);throw new Error(label+": the request safety budget is exhausted. Please retry later or reduce trip length.")}
+  requestBudget.remaining--;
   const body={
-   model,
-   store:false,
-   input:promptFor(kind,ctx),
-   response_format:{type:"text",mime_type:"application/json",schema:schemas[kind]},
-   stream:true,
+   model,store:false,input:promptFor(kind,ctx),
+   response_format:{type:"text",mime_type:"application/json",schema:schemas[kind]},stream:true,
    generation_config:{max_output_tokens:kind==="route"?900:kind==="flights"?850:kind==="transport"?800:kind==="stay"?750:kind==="attractions"?900:kind==="dining"?650:kind==="guide"?1100:850,thinking_level:"low"}
   };
   if(useSearch)body.tools=[{type:"google_search"}];
-  if(requestBudget.remaining<=0)throw new Error(label+": the request safety budget is exhausted. Please retry later or reduce trip length.");
-  requestBudget.remaining--;
   let response;
   try{
    response=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{
-    method:"POST",
-    headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY,"Api-Revision":"2026-05-20"},
-    body:JSON.stringify(body),
-    signal:AbortSignal.timeout(110000)
+    method:"POST",headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY,"Api-Revision":"2026-05-20"},
+    body:JSON.stringify(body),signal:AbortSignal.timeout(110000)
    });
   }catch(err){
-   if(attempt<3&&err?.name!=="TimeoutError"&&retryBudget.remaining>0){
-    retryBudget.remaining--;
-    send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});
-    continue;
-   }
+   releaseRequestSlot(requestGate);
+   if(attempt<11&&err?.name!=="TimeoutError"&&retryBudget.remaining>0){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
    throw new Error(label+": "+(err?.name==="TimeoutError"?"AI request timed out after 110 seconds.":"Could not connect to Gemini Interactions API."));
   }
   if(response.status===429){
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
-   const freeTier=/free.?tier|FreeTier/i.test(details);
-   if(freeTier)modelState.freeTier=true;
-   if(model!==modelState.fallback&&modelState.fallback){
-    const previous=model;
-    if(modelState.current===model)modelState.current=modelState.fallback;
-    modelState.switched=true;
-    send({type:"model_fallback",agent:label,from:previous,to:modelState.current,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Rate limit reached for "+previous+". Switching to "+modelState.current+"."});
-    continue;
-   }
-   throw new Error(label+": the primary and fallback model are rate-limited (HTTP 429). "+details+" Wait for the quota reset or enable Gemini billing for higher limits.");
-  }
-  if([502,503,504].includes(response.status)&&attempt<3&&retryBudget.remaining>0){
-   retryBudget.remaining--;
-   const wait=Math.min(2500,Number(response.headers.get("retry-after"))*1000||1000);
-   try{await response.body?.cancel()}catch{}
-   send({type:"agent_retry",agent:label,message:"Gemini temporarily failed (HTTP "+response.status+"); retrying once."});
-   await new Promise(resolve=>setTimeout(resolve,wait));
-   continue;
+   releaseRequestSlot(requestGate);
+   if(/free.?tier|FreeTier/i.test(details))modelState.freeTier=true;
+   const next=advanceModel(modelState,model);
+   if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Quota/rate limit reached for "+model+". Switching to "+next+"."});continue}
+   throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details+" Wait for the quota reset or enable Gemini billing for higher limits.");
   }
   if(!response.ok){
-   let text="";try{text=(await response.text()).slice(0,600)}catch{}
-   if(useSearch&&(response.status===400||response.status===403)){
-    throw new Error(label+": Gemini rejected the Google Search request (HTTP "+response.status+"). Search grounding may require an eligible billing-enabled project or the provider may have rejected the request configuration. "+text);
+   let details="";try{details=(await response.text()).slice(0,700)}catch{}
+   releaseRequestSlot(requestGate);
+   const transient=[502,503,504].includes(response.status)||isCapacityError(details);
+   if(transient){
+    if(capacityRetriesForModel<1&&retryBudget.remaining>0&&attempt<11){
+     capacityRetriesForModel++;retryBudget.remaining--;
+     const delay=1000*Math.pow(2,capacityRetriesForModel-1);
+     send({type:"agent_retry",agent:label,message:"Gemini is temporarily overloaded (HTTP "+response.status+"); retrying after "+(delay/1000)+"s."});
+     await new Promise(resolve=>setTimeout(resolve,delay));continue;
+    }
+    const next=advanceModel(modelState,model);
+    if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Model "+model+" is temporarily overloaded. Switching to "+next+"."});continue}
    }
-   throw new Error(label+": Gemini returned HTTP "+response.status+". "+text);
+   if(useSearch&&(response.status===400||response.status===403))throw new Error(label+": Gemini rejected the Google Search request (HTTP "+response.status+"). Search grounding may require an eligible billing-enabled project or the provider may have rejected the request configuration. "+details);
+   if(transient)throw new Error(label+": all configured Gemini models are currently overloaded or unavailable. Please wait a few minutes and retry. Last response: HTTP "+response.status+". "+details);
+   throw new Error(label+": Gemini returned HTTP "+response.status+". "+details);
   }
-  if(!response.body)throw new Error(label+": Gemini returned no response stream.");
+  if(!response.body){releaseRequestSlot(requestGate);throw new Error(label+": Gemini returned no response stream.")}
   const reader=response.body.getReader(),decoder=new TextDecoder();
   let buffer="",output="",status="in_progress",streamError=null;
   const parseFrame=frame=>{
-   const lines=frame.split(/\r?\n/);
-   const data=lines.filter(x=>x.startsWith("data:")).map(x=>x.slice(5).trim()).join("\n");
+   const lines=frame.split(/\r?\n/),data=lines.filter(x=>x.startsWith("data:")).map(x=>x.slice(5).trim()).join("\n");
    if(!data||data==="[DONE]")return;
    let event;try{event=JSON.parse(data)}catch{return}
    const type=event.event_type||lines.find(x=>x.startsWith("event:"))?.slice(6).trim();
@@ -194,47 +207,37 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget){
   };
   let readError=null;
   try{
-   while(true){
-    const part=await reader.read();if(part.done)break;
-    buffer+=decoder.decode(part.value,{stream:true});
-    const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();
-    frames.forEach(parseFrame);
-    if(streamError)break;
-   }
+   while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();frames.forEach(parseFrame)}
    buffer+=decoder.decode();if(buffer.trim())parseFrame(buffer);
   }catch(err){readError=err}
-  finally{try{reader.releaseLock()}catch{}}
-  const canRetry=attempt<3&&retryBudget.remaining>0;
+  finally{try{reader.releaseLock()}catch{}releaseRequestSlot(requestGate)}
+  const canRetry=attempt<11&&retryBudget.remaining>0;
   if(readError){
    if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response stream was interrupted; retrying once."});continue}
    throw new Error(label+": response stream interrupted: "+(readError?.message||"network error"));
   }
   if(streamError){
-   if(canRetry&&/timeout|temporar|overload|gateway|interrupted|unavailable/i.test(streamError)){
-    retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini interrupted the response; retrying once."});continue;
+   if(isCapacityError(streamError)){
+    if(capacityRetriesForModel<1&&retryBudget.remaining>0&&attempt<11){
+     capacityRetriesForModel++;retryBudget.remaining--;
+     const delay=1000*Math.pow(2,capacityRetriesForModel-1);
+     send({type:"agent_retry",agent:label,message:"Gemini reports high demand; retrying after "+(delay/1000)+"s."});
+     await new Promise(resolve=>setTimeout(resolve,delay));continue;
+    }
+    const next=advanceModel(modelState,model);
+    if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Model "+model+" remains overloaded. Switching to "+next+"."});continue}
    }
+   if(isCapacityError(streamError))throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please wait a few minutes and retry. "+streamError);
    throw new Error(label+": "+streamError);
   }
-  if(status!=="completed"){
-   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini ended the stream early; retrying once."});continue}
-   throw new Error(label+": Gemini stream ended before the interaction was completed (status "+status+").");
-  }
-  if(!output.trim()){
-   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini returned no text; retrying once."});continue}
-   throw new Error(label+": Gemini stream ended without structured text.");
-  }
-  let data;try{data=JSON.parse(output.trim())}catch{
-   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The JSON response was incomplete; retrying once."});continue}
-   throw new Error(label+": Gemini returned incomplete JSON.");
-  }
+  if(status!=="completed"){if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini ended the stream early; retrying once."});continue}throw new Error(label+": Gemini stream ended before the interaction was completed (status "+status+").")}
+  if(!output.trim()){if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini returned no text; retrying once."});continue}throw new Error(label+": Gemini stream ended without structured text.")}
+  let data;try{data=JSON.parse(output.trim())}catch{if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The JSON response was incomplete; retrying once."});continue}throw new Error(label+": Gemini returned incomplete JSON.")}
   const issue=validateAgent(kind,data,ctx);
-  if(issue){
-   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response was incomplete; retrying this research task once."});continue}
-   throw new Error(label+": "+issue);
-  }
+  if(issue){if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response was incomplete; retrying this research task once."});continue}throw new Error(label+": "+issue)}
   return {data,sources:sourceUnique(sources),queries,model};
  }
- throw new Error(label+": Gemini was temporarily unavailable after retry.");
+ throw new Error(label+": Gemini was temporarily unavailable after all configured model attempts.");
 }
 async function pool(tasks,limit,worker,onFailure){
  let next=0;const results=new Array(tasks.length);
@@ -283,13 +286,15 @@ export async function onRequestPost({request,env}){
     deadlineTimer=setTimeout(()=>{emit({type:"error",error:"The research team exceeded its 9-minute safety window. Please retry with fewer travel days or a simpler destination."});cancelled=true;controller.close()},540000);
     (async()=>{
      try{
-      // 21-day / four-base plans use at most 37 agents. Three initial quota fallbacks plus seven retries keep requests at or below 47.
+      // 21-day / four-base plans use at most 37 agents. The shared request budget caps model rotations and retries at 49 calls; the gate allows at most two in-flight calls.
       const primaryModel=clip(env.MODEL||"gemini-3.8-flash",80);
       const configuredFallback=clip(env.FALLBACK_MODEL||"gemini-3.5-flash-lite",80);
-      const fallbackModel=configuredFallback===primaryModel?"gemini-3.1-flash-lite":configuredFallback;
-      const modelState={primary:primaryModel,fallback:fallbackModel,current:primaryModel,switched:false,freeTier:false,searchNoticeSent:false};
+      const tertiaryModel=clip(env.TERTIARY_MODEL||"gemini-3.1-flash-lite",80);
+      const modelCandidates=[primaryModel,configuredFallback,tertiaryModel].filter((model,index,list)=>model&&list.indexOf(model)===index);
+      const modelState={primary:primaryModel,models:modelCandidates,index:0,switched:false,freeTier:false,searchNoticeSent:false};
       const retryBudget={remaining:7};
       const requestBudget={remaining:49};
+      const requestGate=createRequestGate(2,350);
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
@@ -301,7 +306,7 @@ export async function onRequestPost({request,env}){
       const openingRuns=await pool(openingTasks,3,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed:openingCompleted,total:openingTasks.length});
        const ctx={trip,useSearch,maxBases,nights:dayCount-1,label:task.label};
-       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget);
+       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
        openingCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:openingCompleted,total:openingTasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
@@ -323,7 +328,7 @@ export async function onRequestPost({request,env}){
       const specialistRuns=await pool(tasks,5,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed,total:tasks.length});
        const ctx={trip,useSearch,areas,area:task.area,label:task.label};
-       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget);
+       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
        completed++;
        emit({type:"agent_completed",agent:task.label,completed,total:tasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
@@ -354,7 +359,7 @@ export async function onRequestPost({request,env}){
       const dayRuns=await pool(dayTasks,5,async(task)=>{
        const relevant=combined.highlights.filter(h=>String(h.area||"").toLowerCase().includes(task.base.toLowerCase())||task.base.toLowerCase().includes(String(h.area||"").toLowerCase())).slice(0,8);
        emit({type:"agent_started",agent:task.label,completed:daysCompleted,total:dayCount});
-       const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit,retryBudget,modelState,requestBudget);
+       const result=await runAgent("day",{trip,useSearch:false,label:task.label,date:task.date,dayNumber:task.index+1,base:task.base,areas,highlights:relevant},env,emit,retryBudget,modelState,requestBudget,requestGate);
        daysCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:daysCompleted,total:dayCount,sourceCount:result.sources.length,searchCount:0});
        return {day:result.data.days[0],model:result.model};
@@ -366,7 +371,7 @@ export async function onRequestPost({request,env}){
       const allResearch=[{label:"Route architect",sources:route.sources||[],queries:route.queries||[]},...specialistResults];
       combined.research_sources=sourceUnique(allResearch.flatMap(x=>x.sources||[])).map(s=>({...s,agent:allResearch.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
       const modelsUsed=Array.from(new Set([route.model,...specialistResults.map(x=>x.model),...dayResults.map(x=>x.model)].filter(Boolean)));
-      combined.research={search_requested:useSearch,search_enabled:useSearch&&!modelState.freeTier,search_disabled_for_free_tier_fallback:modelState.freeTier&&useSearch,primary_model:modelState.primary,fallback_model:modelState.fallback,model_fallback_used:modelState.switched,model_used:modelsUsed.length===1?modelsUsed[0]:modelsUsed.join(", "),models_used:modelsUsed,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
+      combined.research={search_requested:useSearch,search_enabled:useSearch&&!(modelState.freeTier&&modelState.switched),search_disabled_for_free_tier_fallback:modelState.freeTier&&modelState.switched&&useSearch,primary_model:modelState.primary,fallback_models:modelState.models.slice(1),model_fallback_used:modelState.switched,model_used:modelsUsed.length===1?modelsUsed[0]:modelsUsed.join(", "),models_used:modelsUsed,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
       const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats"];
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
       if(combined.areas.some(a=>!Array.isArray(a.hotel_options)||!a.hotel_options.length))throw new Error("At least one stay researcher did not return suitable hotel options.");
