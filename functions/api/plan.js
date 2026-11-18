@@ -1,13 +1,16 @@
 // Cloudflare Pages Function: POST /api/plan
-// Needs secret ANTHROPIC_API_KEY. Optional var MODEL.
-const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
+// Needs the encrypted GEMINI_API_KEY secret. Optional var MODEL.
+const J = (o, s = 200) => new Response(JSON.stringify(o), {
+  status: s,
+  headers: { 'content-type': 'application/json; charset=utf-8' }
+});
 const clip = (v, n) => String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, n);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function onRequestPost({ request, env }) {
   const origin = request.headers.get('origin');
   if (origin && origin !== new URL(request.url).origin) return J({ error: 'forbidden' }, 403);
-  if (!env.ANTHROPIC_API_KEY) return J({ error: 'server not configured' }, 500);
+  if (!env.GEMINI_API_KEY) return J({ error: 'server not configured: add GEMINI_API_KEY in Cloudflare Pages settings' }, 500);
 
   let b;
   try { b = await request.json(); } catch { return J({ error: 'bad json' }, 400); }
@@ -25,12 +28,30 @@ export async function onRequestPost({ request, env }) {
     '{"overview":"2-3 sentences","best_time":"season fit for these dates, weather","currency":"local currency and rough rate","budget_per_day":"per person per day","getting_there":"flight routes, airlines, typical fare range from departure city","getting_around":"local transport tips","areas":[{"name":"","why":"","stay":[{"name":"real hotel/hostel/resort","type":"hotel|resort|hostel|homestay","price":"per night","why":"one line"}]}],"attractions":[{"name":"","area":"","type":"Temple|Beach|Nature|Culture|Food|Nightlife|Shopping|Family","duration":"","cost":"","tip":""}],"food":[{"name":"","dish":"","price":""}],"days":[{"date":"YYYY-MM-DD","title":"","plan":["morning...","afternoon...","evening..."],"stay":"where sleeping"}],"tips":["..."],"warnings":["visa, scams, weather, closures relevant to these dates"]}\n' +
     'Limits: 2-4 areas with 2 stays each, 10-14 attractions, 6 food items, exactly ' + n + ' day entries with each plan max 3 short strings, 5 tips, up to 3 warnings. Keep strings short. Use real, well-known places only.';
 
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
+  const model = clip(env.MODEL || 'gemini-3.8-flash', 80);
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' +
+    encodeURIComponent(model) + ':generateContent', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: env.MODEL || 'claude-sonnet-5-5', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] })
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8000, temperature: 0.7 }
+    })
   });
-  if (!r.ok) return J({ error: 'upstream ' + r.status }, r.status === 429 ? 429 : 502);
+
+  if (!r.ok) {
+    const status = r.status;
+    // Do not expose provider response bodies or secrets to the browser.
+    return J({ error: status === 429 ? 'AI usage limit reached. Please wait and try again.' :
+      status === 400 ? 'Gemini rejected the request. Check the MODEL setting.' :
+      status === 401 || status === 403 ? 'Gemini API key is invalid or does not have access.' :
+      'AI provider temporarily unavailable (' + status + '). Please try again.' },
+      status === 429 ? 429 : 502);
+  }
+
   const d = await r.json();
-  return J({ text: (d.content || []).filter(x => x.type === 'text').map(x => x.text).join('') });
+  const text = (d.candidates?.[0]?.content?.parts || [])
+    .filter(x => typeof x.text === 'string').map(x => x.text).join('');
+  if (!text) return J({ error: 'Gemini returned an empty response. Please try again.' }, 502);
+  return J({ text });
 }
