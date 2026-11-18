@@ -6,11 +6,10 @@ Enter a destination and dates to generate stays, sights, food recommendations an
 
 The Pages Function orchestrates specialised research agents rather than asking one model call to create the entire report:
 
-1. A route architect selects overnight bases and distributes nights.
-2. For each base, separate stay, attractions and dining researchers work independently.
-3. Flight, local transport, and practical-guide/budget researchers run alongside them.
-4. Once research is complete, one day planner is launched for each travel date. Day planners use the selected route and researched attractions.
-5. Tasks run with bounded concurrency, individual validation, progress events and a shared retry budget. The final report is assembled only after completeness checks pass.
+1. Route, flights, and practical-guide/budget agents start in parallel.
+2. Once the route's overnight bases are known, each base gets its own stay, attractions and dining researchers. A local-transport researcher runs alongside them.
+3. After the research pool completes, a separate day planner is launched for each travel date. Day planners use the selected route and researched attractions.
+4. Tasks run with bounded concurrency (five at a time), individual validation, progress events, a shared retry budget and final completeness checks. A failed agent is reported by name; other parallel tasks are allowed to finish before the plan is rejected.
 
 The browser receives Server-Sent Events for stage, agent, search and heartbeat progress. The report renderer and dynamic budget calculator remain browser-side.
 
