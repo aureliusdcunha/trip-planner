@@ -95,14 +95,14 @@ $('f').onsubmit=async function(ev){
   $('go').disabled=true;$('out').classList.add('hide');
   try{
     var resp=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p.body)});
-    if(!resp.ok){var er=new Error('http');er.status=resp.status;throw er}
     var r=await resp.json();
+    if(!resp.ok){var er=new Error(r.error||'Request failed');er.status=resp.status;throw er}
     var t=(r.text||'').replace(/\`\`\`json|\`\`\`/g,'').trim();
     var a=t.indexOf('{'),b=t.lastIndexOf('}');
     data=JSON.parse(t.slice(a,b+1));
     st.textContent='';tab='Overview';filter='All';render();
   }catch(x){
-    st.textContent=(x&&x.status===429)?'Too many requests. Wait a minute and retry.':'Could not build the report (response may have been cut off). Try fewer days or a narrower destination.';
+    st.textContent=(x&&x.message)?x.message:(x&&x.status===429?'Too many requests. Wait a minute and retry.':'Could not build the report. Please try again.');
   }
   $('go').disabled=false;
 };
