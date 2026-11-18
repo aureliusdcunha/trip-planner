@@ -55,6 +55,7 @@ async function requestItinerary(payload){
    else if(msg.type==='agent_search')$('status').textContent='Searching the web · '+msg.agent+' · '+msg.query;
    else if(msg.type==='agent_retry')$('status').textContent=msg.agent+' · '+msg.message;
    else if(msg.type==='model_fallback')$('status').textContent=msg.message+(msg.searchDisabled?' Live Google Search will be skipped for the fallback model on this free-tier project.':'');
+   else if(msg.type==='model_wait')$('status').textContent=msg.message||('Rate limit reached. Pausing researchers for '+msg.seconds+' seconds before retrying '+msg.model+'.');
    else if(msg.type==='model_notice')$('status').textContent=msg.message;
    else if(msg.type==='agent_failed')$('status').textContent='Research task failed · '+msg.agent+' · '+msg.error;
    else if(msg.type==='agent_completed')$('status').textContent='Completed '+msg.completed+' of '+msg.total+' tasks · '+msg.agent;

@@ -36,6 +36,12 @@ HTTP 429 quota failures immediately advance to the next model. HTTP 503/high-dem
 - If all configured models are quota-limited or unavailable, the app returns a clear error; it cannot guarantee service availability during a provider-wide outage.
 
 
+### Per-minute rate-limit handling
+
+Gemini Free Tier may return HTTP 429 for a per-minute request limit while the model remains available. The planner parses provider responses such as `15 requests per minute; retry in 55s`, pauses the shared researcher queue until the stated reset plus a one-second safety margin, and retries the same model. Daily quota exhaustion still advances to the next configured model.
+
+A shared request gate limits the planner to two in-flight Gemini requests and spaces request starts by at least 4.3 seconds (under 14 starts per minute). The UI displays the cooldown while researchers wait. A bounded request budget and overall plan deadline still apply; if provider capacity or quota remains unavailable after the allowed attempts, the plan reports that limitation.
+
 ## Project structure
 
 - `public/index.html`: browser interface, stream reader, report renderer and dynamic budget calculation

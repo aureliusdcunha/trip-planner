@@ -101,13 +101,28 @@ function advanceModel(modelState,failedModel){
  const next=modelState.models[modelState.index];
  return next!==failedModel?next:null;
 }
-function createRequestGate(limit,spacingMs){return {limit,spacingMs,active:0,queue:[],nextStartAt:0}}
+function createRequestGate(limit,spacingMs){return {limit,spacingMs,active:0,queue:[],nextStartAt:0,pauseUntil:0}}
 async function acquireRequestSlot(gate){
  if(gate.active<gate.limit&&gate.queue.length===0)gate.active++;
  else await new Promise(resolve=>gate.queue.push(resolve));
- const now=Date.now(),wait=Math.max(0,gate.nextStartAt-now);
+ while(true){
+  const now=Date.now(),wait=Math.max(gate.nextStartAt-now,gate.pauseUntil-now);
+  if(wait<=0)break;
+  await new Promise(resolve=>setTimeout(resolve,wait));
+ }
+ const now=Date.now();
  gate.nextStartAt=Math.max(now,gate.nextStartAt)+gate.spacingMs;
- if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+}
+function rateLimitCooldownSeconds(details){
+ const text=String(details||"");
+ const retry=text.match(/retry\s+in\s+(\d+)\s*(s|sec(?:onds?)?|m|min(?:utes?)?)/i);
+ if(retry){
+  const amount=Number(retry[1]);
+  const unit=retry[2].toLowerCase();
+  const seconds=unit.startsWith("m")?amount*60:amount;
+  return seconds>0&&seconds<=120?seconds:0;
+ }
+ return /requests?\s+per\s+minute|per minute/i.test(text)?60:0;
 }
 function releaseRequestSlot(gate){
  if(gate.queue.length){const next=gate.queue.shift();next()}
@@ -119,7 +134,7 @@ function isCapacityError(message){
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
  let lastModel="",capacityRetriesForModel=0;
- for(let attempt=0;attempt<12;attempt++){
+ for(let attempt=0;attempt<20;attempt++){
   await acquireRequestSlot(requestGate);
   const model=modelState.models[modelState.index];
   if(model!==lastModel){lastModel=model;capacityRetriesForModel=0}
@@ -152,6 +167,12 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
    releaseRequestSlot(requestGate);
    if(/free.?tier|FreeTier/i.test(details))modelState.freeTier=true;
+   const cooldownSeconds=rateLimitCooldownSeconds(details);
+   if(cooldownSeconds){
+    requestGate.pauseUntil=Math.max(requestGate.pauseUntil,Date.now()+(cooldownSeconds+1)*1000);
+    send({type:"model_wait",agent:label,model,seconds:cooldownSeconds+1,message:"Gemini rate limit reached for "+model+". Pausing all researchers for about "+(cooldownSeconds+1)+" seconds, then retrying this model."});
+    continue;
+   }
    const next=advanceModel(modelState,model);
    if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Quota/rate limit reached for "+model+". Switching to "+next+"."});continue}
    throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details+" Wait for the quota reset or enable Gemini billing for higher limits.");
@@ -294,7 +315,7 @@ export async function onRequestPost({request,env}){
       const modelState={primary:primaryModel,models:modelCandidates,index:0,switched:false,freeTier:false,searchNoticeSent:false};
       const retryBudget={remaining:7};
       const requestBudget={remaining:49};
-      const requestGate=createRequestGate(2,350);
+      const requestGate=createRequestGate(2,4300);
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
