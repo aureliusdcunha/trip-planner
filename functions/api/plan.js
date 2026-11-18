@@ -289,7 +289,7 @@ export async function onRequestPost({request,env}){
       const fallbackModel=configuredFallback===primaryModel?"gemini-3.1-flash-lite":configuredFallback;
       const modelState={primary:primaryModel,fallback:fallbackModel,current:primaryModel,switched:false,freeTier:false,searchNoticeSent:false};
       const retryBudget={remaining:7};
-      const requestBudget={remaining:47};
+      const requestBudget={remaining:49};
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
