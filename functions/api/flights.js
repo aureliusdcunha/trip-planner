@@ -67,12 +67,45 @@ function mapFlight(item,segment,cabin,currency,sourceUrl){
   source_url:sourceUrl||"",price_source:"Google Flights via SerpApi",price_checked_at:new Date().toISOString()
  };
 }
+
+async function fallbackRequest(url,headers){
+ const r=await fetch(url,{headers:{Accept:"application/json",...headers},signal:AbortSignal.timeout(45000)}),j=await r.json().catch(()=>({}));
+ if(!r.ok||j.status===false||j.error||j.success===false)throw new Error(j.message||j.error?.message||j.description||("HTTP "+r.status));return j;
+}
+function mapFallback(x,segment,cabin,currency,source){
+ const legs=Array.isArray(x.legs)?x.legs:Array.isArray(x.flights)?x.flights:[],a=legs[0]||x,z=legs[legs.length-1]||x,price=Number(x.price?.amount??x.price??x.price_estimate??x.total_price);
+ if(!(price>0))return null;
+ const airline=x.airline_name||x.airline||(Array.isArray(x.airlines)?x.airlines.join(" / "):"")||legs.map(v=>v.airline_name||v.airline).filter(Boolean).join(" / ")||"Airline not specified";
+ const dep=a.departure_time||a.departure_airport?.time||x.departure_time||x.departure,arr=z.arrival_time||z.arrival_airport?.time||x.arrival_time||x.arrival;
+ const route=legs.map(v=>(v.departure_airport?.code||v.departure_airport?.id||v.departure_airport||v.from_airport||"")+"–"+(v.arrival_airport?.code||v.arrival_airport?.id||v.arrival_airport||v.to_airport||"")).join(" · ");
+ const mins=Number(x.total_duration_minutes??x.total_duration??a.duration_minutes??a.duration);
+ return {segment,airlines:airline,cabin_class:cabin,route,flight_number:legs.map(v=>v.flight_number).filter(Boolean).join(" + ")||x.flight_number||"",departure:formatTime(dep),arrival:formatTime(arr),duration:duration(mins),stops:String(x.stops??Math.max(0,legs.length-1)),layovers:(x.layovers||[]).map(v=>v.name||v.id||v).join(" · "),baggage:"",price_estimate:price,adult_price_per_person:price,child_price_per_person:price,infant_price_per_person:price*.1,provider_total_amount:price,provider_currency:x.currency||currency,price_unverified:false,live_fare:true,fare_notes:"Indicative provider fare for one adult, one-way. Child and lap-infant amounts are planning estimates.",source_url:"",price_source:source,price_checked_at:new Date().toISOString()};
+}
+async function runRapidFallback(key,from,to,b,currency){
+ const rows=[];for(const c of CABINS)for(const l of [{segment:"outbound",from,to,date:b.departureDate},{segment:"return",from:to,to:from,date:b.returnDate}]){
+  const u=new URL("https://google-flights2.p.rapidapi.com/api/v1/searchFlights");
+  for(const [k,v] of Object.entries({departure_id:l.from,arrival_id:l.to,outbound_date:l.date,travel_class:c.label.toUpperCase().replace(/ /g,"_"),adults:1,currency,language_code:"en-US",country_code:"IN",search_type:"best"}))u.searchParams.set(k,String(v));
+  const j=await fallbackRequest(u,{"X-RapidAPI-Key":key,"X-RapidAPI-Host":"google-flights2.p.rapidapi.com"}),d=j.data||j,it=d.itineraries||d;
+  rows.push(...[...(it.topFlights||[]),...(it.otherFlights||[]),...(d.flights||[]),...(d.best_flights||[]),...(d.other_flights||[])].map(x=>mapFallback(x,l.segment,c.label,currency,"Google Flights via DataCrawler / RapidAPI")).filter(Boolean));
+ }if(!rows.length)throw Error("No usable fares returned");return rows;
+}
+async function runPerceptFallback(key,from,to,b,currency){
+ const rows=[];for(const c of CABINS)for(const l of [{segment:"outbound",from,to,date:b.departureDate},{segment:"return",from:to,to:from,date:b.returnDate}]){
+  const u=new URL("https://api.perceptlayer.com/v1/google-flights/one-way");
+  for(const [k,v] of Object.entries({origin:l.from,destination:l.to,departure_date:l.date,adults:1,cabin_class:c.key,currency,hl:"en",gl:"in"}))u.searchParams.set(k,String(v));
+  const j=await fallbackRequest(u,{"X-API-Key":key});rows.push(...(j.flights||[]).map(x=>mapFallback(x,l.segment,c.label,currency,"Google Flights via Perceptlayer")).filter(Boolean));
+ }if(!rows.length)throw Error("No usable fares returned");return rows;
+}
+function sortFallback(rows){const seen=new Set();return rows.filter(x=>{const k=[x.segment,x.cabin_class,x.route,x.flight_number].join("|").toLowerCase().replace(/\s+/g,"");if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>a.price_estimate-b.price_estimate).slice(0,160)}
+
 export async function onRequestPost({request,env}){
  try{
   const origin=request.headers.get("origin");
   if(origin&&origin!==new URL(request.url).origin)return json({error:"Forbidden request."},403);
   let b;try{b=await request.json()}catch{return json({error:"Invalid request body."},400)}
   const key=env.SERPAPI_API_KEY||env.SERP_API_KEY;
+  const rapidKey=env.RAPIDAPI_KEY;
+  const perceptKey=env.PERCEPTLAYER_API_KEY;
   const action=clip(b.action,20);
   if(action==="status"){
    if(!key)return json({configured:false,provider:"SerpApi",message:"SERPAPI_API_KEY is not configured in Cloudflare Pages."});
@@ -128,7 +161,10 @@ export async function onRequestPost({request,env}){
    else errors.push(String(result.reason?.message||result.reason));
   }
   if(settled.some(result=>result.status==="rejected"&&result.reason?.quotaExceeded)||errors.some(message=>quotaExceeded(message))){
-   return json({code:"QUOTA_EXCEEDED",error:"SerpApi search quota or rate limit has been reached. TripPlanner should use its original itinerary flight estimates instead."},429);
+   const providerErrors=["SerpApi quota or rate limit exhausted."];
+   if(rapidKey){try{const rows=await runRapidFallback(rapidKey,from,to,b,currency);return json({source:"Google Flights via DataCrawler / RapidAPI",provider:"DataCrawler",searchedAt:new Date().toISOString(),origin:from,destination:to,currency,options:sortFallback(rows),searchesUsed:8,partial:false,errors:[],notice:"Fallback live fares via DataCrawler / RapidAPI. Prices can change. No booking or payment is performed."})}catch(e){providerErrors.push("DataCrawler: "+(e.message||"unavailable"))}}else providerErrors.push("RAPIDAPI_KEY not configured.");
+   if(perceptKey){try{const rows=await runPerceptFallback(perceptKey,from,to,b,currency);return json({source:"Google Flights via Perceptlayer",provider:"Perceptlayer",searchedAt:new Date().toISOString(),origin:from,destination:to,currency,options:sortFallback(rows),searchesUsed:8,partial:false,errors:[],notice:"Fallback live fares via Perceptlayer. Prices can change. No booking or payment is performed."})}catch(e){providerErrors.push("Perceptlayer: "+(e.message||"unavailable"))}}else providerErrors.push("PERCEPTLAYER_API_KEY not configured.");
+   return json({code:"ALL_PROVIDERS_EXHAUSTED",error:"All live flight providers are unavailable or out of quota. Use the original AI-generated flight estimates.",providerErrors},429);
   }
   if(!options.length)return json({error:errors[0]||"Google Flights did not return fares for this route and date. Try another date."},502);
   const seen=new Set(),unique=[];
