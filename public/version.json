@@ -1,5 +1,5 @@
 {
-  "version": "1.2.2",
+  "version": "1.2.4",
   "released": "2026-11-19",
-  "releaseName": "Filter report options to the selected budget style"
+  "releaseName": "Clear age-specific trip costs and fix daily itinerary rendering"
 }

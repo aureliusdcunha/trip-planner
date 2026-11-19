@@ -96,7 +96,7 @@ function validateAgent(kind,data,ctx){
  if(kind==="day"){
   if(!Array.isArray(data.days)||data.days.length!==1)return "The day planner must return exactly one day.";
   const d=data.days[0];if(d.date!==ctx.date||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2)return "The daily plan needs at least three activities, two meals and the requested date.";
-  if(d.activities.some(a=>!a.time||!a.name||!a.description||!String(a.transport||a.transport_details||"").trim()||!a.kid_note||!Number.isFinite(a.adult_cost_estimate)||!Number.isFinite(a.child_cost_estimate)||!Number.isFinite(a.infant_cost_estimate)))return "Every itinerary activity needs a time, useful details, transport notes, a child/family note and adult/child/infant costs.";
+  if(d.activities.some(a=>!a.time||!a.name||!a.description||!String(a.transport||a.transport_details||"").trim()||!(a.kid_note||a.child_friendly)||!Number.isFinite(a.adult_cost_estimate)||!Number.isFinite(a.child_cost_estimate)||!Number.isFinite(a.infant_cost_estimate)))return "Every itinerary activity needs a time, useful details, transport notes, a child/family note and adult/child/infant costs.";
   if(d.meals.some(m=>!m.time||!Number.isFinite(m.adult_price_estimate)||!Number.isFinite(m.child_price_estimate)||!Number.isFinite(m.infant_price_estimate)))return "Every meal needs a time and separate adult, child and infant estimates.";
   if(!ctx.trip.includeShopping&&d.activities.some(a=>String(a.shopping_note||"").trim()))return "Shopping stops must be omitted when the traveller has disabled shopping.";
  }
@@ -159,7 +159,7 @@ function isCapacityError(message){
 }
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
- const outputLimits={route:1400,flights:2200,transport:1400,stay:2000,attractions:3400,dining:2400,guide:3200,day:3600};
+ const outputLimits={route:1400,flights:2200,transport:1400,stay:2000,attractions:3400,dining:2400,guide:3200,day:4600};
  let maxOutputTokens=outputLimits[kind]||2000,incompleteRetryCount=0;
  let lastModel="",capacityRetriesForModel=0;
  for(let attempt=0;attempt<20;attempt++){
