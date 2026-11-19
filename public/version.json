@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "released": "2026-11-19",
-  "releaseName": "Live airline fare search with Duffel"
+  "releaseName": "Correct itinerary time ordering"
 }
