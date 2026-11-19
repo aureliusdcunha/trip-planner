@@ -78,7 +78,7 @@ function tierPartyMealRate(style,baseName){
  const tier=styleKey(tierForStyle(style)),all=(trip.dining||[]).filter(x=>styleKey(x.tier)===tier),base=String(baseName||'').toLowerCase();
  let pool=all.filter(x=>{const area=String(x.area||'').toLowerCase();return area&&(base.includes(area)||area.includes(base))});
  if(!pool.length)pool=all;if(!pool.length)return 0;
- const average=(key,fallback)=>{const values=pool.map(x=>{const raw=x[key];return raw!==undefined&&raw!==null&&raw!==''&&Number.isFinite(Number(raw))&&Number(raw)>0?Number(raw):positiveNumber(fallback(x))}).filter(x=>x>0);return values.length?values.reduce((sum,x)=>sum+x,0)/values.length:0};
+ const average=(key,fallback)=>{const values=pool.map(x=>{const raw=x[key];return raw!==undefined&&raw!==null&&raw!==''&&Number.isFinite(Number(raw))?Math.max(0,Number(raw)):positiveNumber(fallback(x))});return values.length?values.reduce((sum,x)=>sum+x,0)/values.length:0};
  const adult=average('adult_price_per_person',x=>x.price_per_person),child=average('child_price_per_person',x=>positiveNumber(x.adult_price_per_person||x.price_per_person)*.7),infant=average('infant_price_per_person',x=>positiveNumber(x.adult_price_per_person||x.price_per_person)*.25);
  return adult*(trip.adults||0)+child*(trip.children||0)+infant*(trip.infants||0);
 }
@@ -105,7 +105,7 @@ function budgetCalc(){
  // When the report-level style changes, scale those prices by the researched dining-tier ratio.
  const allMeals=(trip.days||[]).flatMap(d=>(d.meals||[]).map(m=>({meal:m,base:d.base})));
  const hasCompleteMealPrices=allMeals.length>0&&allMeals.every(({meal:m})=>Number.isFinite(Number(m.adult_price_estimate??m.price_estimate))&&Number.isFinite(Number(m.child_price_estimate??m.price_estimate))&&Number.isFinite(Number(m.infant_price_estimate??0)));
- const generatedStyle=trip.generatedBudgetStyle||trip.bud;
+ const generatedStyle=trip.generatedBudgetStyle||trip.bud,tier=tierForStyle(trip.bud);
  const scheduledFood=allMeals.reduce((sum,{meal:m,base})=>{
   const adult=Number(m.adult_price_estimate??m.price_estimate)||0,child=Number(m.child_price_estimate??m.price_estimate??adult)||0,infant=Number(m.infant_price_estimate)||0;
   const initialRate=tierPartyMealRate(generatedStyle,base),selectedRate=tierPartyMealRate(trip.bud,base),styleScale=initialRate>0&&selectedRate>0?selectedRate/initialRate:1;
