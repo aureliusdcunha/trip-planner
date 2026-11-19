@@ -65,7 +65,7 @@ function validateFlightFareScale(flightData,budget,fxRate,homeCurrency){
  }
  const validOutbound=options.some(x=>String(x.segment||"").trim().toLowerCase()==="outbound"&&Number(x.price_estimate)>0);
  const validReturn=options.some(x=>String(x.segment||"").trim().toLowerCase()==="return"&&Number(x.price_estimate)>0);
- return {checked,invalid,validOutbound,validReturn,baseCeiling,homeCurrency:currency,roundTripUsable:validOutbound&&validReturn};
+ return {checked,invalid,validOutbound,validReturn,baseCeiling,maxOneWayHome:baseCeiling,homeCurrency:currency,roundTripUsable:validOutbound&&validReturn};
 }
 function validDate(s){if(!DATE.test(s))return false;const d=new Date(s+"T00:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s}
 function nightsOf(v){const m=String(v??"").match(/\d+/);return m?Math.max(0,Number(m[0])):0}
