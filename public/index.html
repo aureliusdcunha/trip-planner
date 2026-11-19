@@ -165,7 +165,7 @@ function renderContent(){
   root.append(s);
  }
  if(active==='Flights'){
-  s=heading('Suggested international flights','Indicative one-way fare per passenger for each listed route/segment. The total-trip budget below uses separate round-trip adult, child and infant estimates.');
+  s=heading('Suggested international flights','Indicative one-way fares per adult, with child and lap-infant prices shown where available. The budget sums the outbound and return fare cards, plus any distinct internal flight legs.');
   g=el('div','grid');
   const order=['outbound','return','alternative','domestic'];
   const flights=[...(trip.flight_options||[])].sort((a,b)=>order.indexOf(String(a.segment||'').toLowerCase())-order.indexOf(String(b.segment||'').toLowerCase()));
