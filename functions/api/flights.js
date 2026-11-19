@@ -34,6 +34,14 @@ function duration(minutes){
  const n=Number(minutes);if(!Number.isFinite(n)||n<=0)return "";
  return Math.floor(n/60)+"h "+String(n%60).padStart(2,"0")+"m";
 }
+async function resolveAirport(value,key){
+ const text=clip(value,100);
+ if(/^[A-Z]{3}$/i.test(text))return text.toUpperCase();
+ const result=await serpSearch({engine:"google_flights_autocomplete",q:text,hl:"en",gl:"in",exclude_regions:"true"},key);
+ const airports=(result.suggestions||[]).flatMap(suggestion=>(suggestion.airports||[]).map(airport=>({id:airport.id,name:airport.name,city:airport.city||suggestion.name}))).filter(x=>/^[A-Z]{3}$/.test(String(x.id||"")));
+ if(!airports.length)throw new Error("Could not identify an airport for "+text+". Choose a more specific city or airport.");
+ return airports[0];
+}
 function mapFlight(item,segment,cabin,currency,sourceUrl){
  const legs=Array.isArray(item.flights)?item.flights:[];
  const price=Number(item.price);
@@ -65,8 +73,18 @@ export async function onRequestPost({request,env}){
   if(origin&&origin!==new URL(request.url).origin)return json({error:"Forbidden request."},403);
   let b;try{b=await request.json()}catch{return json({error:"Invalid request body."},400)}
   const key=env.SERPAPI_API_KEY||env.SERP_API_KEY;
-  if(!key)return json({error:"Flight price search is not configured. Add SERPAPI_API_KEY as a Cloudflare Pages secret."},503);
   const action=clip(b.action,20);
+  if(action==="status"){
+   if(!key)return json({configured:false,provider:"SerpApi",message:"SERPAPI_API_KEY is not configured in Cloudflare Pages."});
+   try{
+    const accountUrl=new URL("https://serpapi.com/account.json");accountUrl.searchParams.set("api_key",key);
+    const response=await fetch(accountUrl,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(12000)});
+    const account=await response.json().catch(()=>({}));
+    if(!response.ok||account.error)return json({configured:true,valid:false,provider:"SerpApi",message:account.error||"SerpApi account check failed."});
+    return json({configured:true,valid:true,provider:"SerpApi",plan:account.plan_name||"Plan",monthlyLimit:Number(account.searches_per_month)||0,used:Number(account.this_month_usage)||0,remaining:Number(account.plan_searches_left??account.total_searches_left)||0,hourlyLimit:Number(account.account_rate_limit_per_hour)||0,hourlyUsed:Number(account.this_hour_searches??account.last_hour_searches)||0,renewalDate:account.plan_renewal_date||null});
+   }catch(error){return json({configured:true,valid:null,provider:"SerpApi",message:"Could not read account quota: "+(error.message||"network error")})}
+  }
+  if(!key)return json({error:"Flight price search is not configured. Add SERPAPI_API_KEY as a Cloudflare Pages secret."},503);
   if(action==="places"){
    const q=clip(b.query,80);if(q.length<2)return json({places:[]});
    const result=await serpSearch({engine:"google_flights_autocomplete",q,hl:"en",gl:"in",exclude_regions:"true"},key);
@@ -80,10 +98,13 @@ export async function onRequestPost({request,env}){
    return json({places:places.slice(0,12)});
   }
   if(action!=="search")return json({error:"Unsupported flight action."},400);
-  const from=clip(b.origin,3).toUpperCase(),to=clip(b.destination,3).toUpperCase();
-  if(!/^[A-Z]{3}$/.test(from)||!/^[A-Z]{3}$/.test(to)||from===to)return json({error:"Choose valid airport suggestions for both origin and destination."},400);
+  if(!b.origin||!b.destination)return json({error:"Origin and destination are required."},400);
   if(!dateOk(b.departureDate)||!dateOk(b.returnDate)||b.returnDate<b.departureDate)return json({error:"Enter valid outbound and return dates."},400);
   const currency=clip(b.currency,3).toUpperCase()||"INR";
+  let from,to;
+  try{const resolved=await Promise.all([resolveAirport(b.origin,key),resolveAirport(b.destination,key)]);from=typeof resolved[0]==="string"?resolved[0]:resolved[0].id;to=typeof resolved[1]==="string"?resolved[1]:resolved[1].id;}
+  catch(error){return json({error:error.message||"Could not resolve the departure and destination airports."},422)}
+  if(from===to)return json({error:"Origin and destination resolve to the same airport."},400);
   if(!/^[A-Z]{3}$/.test(currency))return json({error:"Choose a valid trip currency."},400);
   const legs=[{segment:"outbound",from,to,date:b.departureDate},{segment:"return",from:to,to:from,date:b.returnDate}];
   // Four cabin classes × two one-way directions = eight Google Flights searches.
@@ -93,7 +114,7 @@ export async function onRequestPost({request,env}){
    jobs.push((async()=>{
     const result=await serpSearch({
      engine:"google_flights",departure_id:leg.from,arrival_id:leg.to,outbound_date:leg.date,type:"2",
-     travel_class:cabin.value,currency,gl:"in",hl:"en",adults:"1",stops:"0",sort_by:"2",show_hidden:"true"
+     travel_class:cabin.value,currency,gl:"in",hl:"en",adults:"1",sort_by:"2",show_hidden:"true"
     },key);
     const sourceUrl=result.search_metadata?.google_flights_url||"";
     const candidates=[...(result.best_flights||[]),...(result.other_flights||[])];
