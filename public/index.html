@@ -140,7 +140,7 @@ function renderContent(){
  }
  if(active==='Flights'){
   s=heading('Compare and select your flights','Filter by cabin and stops, then select one outbound and one return option. Selected fares feed into Budget. Fares are indicative unless verified by the provider.');
-  const live=section('Search live airline fares','Connects to Duffel for current airline offers. Search results are time-sensitive and are not tickets until booked.');
+  const live=section('Search flight prices','Compare indicative Google Flights prices across airlines and all four cabin classes. This is price research only — no booking or payment functionality.');
   const panel=el('div','live-flight-panel');
   const makePlace=(label,value,id)=>{
    const wrap=el('label','live-flight-field',label),field=el('input');field.type='text';field.id=id;field.value=value;field.placeholder='City or airport';field.autocomplete='off';
@@ -153,21 +153,21 @@ function renderContent(){
   const lookup=(field,list)=>{let timer;field.addEventListener('input',()=>{clearTimeout(timer);const q=field.value.trim();if(q.length<2)return;timer=setTimeout(async()=>{try{const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'places',query:q})});const data=await r.json();list.replaceChildren(...(data.places||[]).map(place=>{const option=el('option');option.value=place.label;return option}))}catch{}},350)})};
   lookup(originField.field,originField.list);lookup(destinationField.field,destinationField.list);
   const searchButton=el('button','btn','Search live fares');searchButton.type='button';
-  const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'Search live fares to compare real airline offers across cabin classes and up to 2 stops.');
+  const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'Search once to retrieve outbound and return prices across Economy, Premium Economy, Business and First Class. Stop filters are applied locally and do not trigger more API searches.');
   searchButton.onclick=async()=>{
    const code=value=>{const match=String(value||'').match(/\(([A-Z]{3})\)\s*$/);return match?match[1]:/^[A-Z]{3}$/.test(String(value||'').trim())?String(value).trim().toUpperCase():''};
    const fromCode=code(originField.field.value),toCode=code(destinationField.field.value);
    if(!fromCode||!toCode){liveStatus.textContent='Choose a city/airport suggestion from the dropdown so its IATA code is included (for example Mumbai (BOM)).';return}
    if(!departField.field.value||!returnField.field.value||returnField.field.value<departField.field.value){liveStatus.textContent='Enter valid departure and return dates.';return}
-   searchButton.disabled=true;liveStatus.textContent='Searching airline inventory across Economy, Premium Economy, Business and First Class…';
+   searchButton.disabled=true;liveStatus.textContent='Searching Google Flights prices across four cabin classes and both directions…';
    trip.flightSearch={originText:originField.field.value,destinationText:destinationField.field.value};
    try{
-    const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromCode,destination:toCode,departureDate:departField.field.value,returnDate:returnField.field.value,adults:trip.adults||1,children:trip.children||0,infants:trip.infants||0,childAges:trip.childAges||[],localCurrency:local,homeCurrency:home,exchangeRateToHome:trip.budget.exchange_rate_to_home})});
+    const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromCode,destination:toCode,departureDate:departField.field.value,returnDate:returnField.field.value,currency:local})});
     const data=await r.json();if(!r.ok)throw new Error(data.error||'Live flight search failed.');
     trip.liveFlightOptions=data.options||[];trip.liveFlightSearchAt=data.searchedAt;trip.liveFlightSearchNotice=data.notice;
-    const start=trip.flight_options.length;trip.flight_options.push(...trip.liveFlightOptions);
+    const start=trip.flight_options.length;trip.flight_options.push(...trip.liveFlightOptions);trip.liveSelectedFlights={};
     trip.liveFlightOptions=trip.liveFlightOptions.map((f,i)=>({...f,_tripIndex:start+i}));
-    trip.liveFlightStatus='Found '+trip.liveFlightOptions.length+' live offers · '+(data.liveMode?'Live provider mode':'Provider test mode')+'. '+(data.partial?'Some cabin searches did not return results. ':'')+'Prices may expire or change.';
+    trip.liveFlightStatus='Found '+trip.liveFlightOptions.length+' indicative flight prices from Google Flights · '+(data.searchesUsed||8)+' searches used. '+(data.partial?'Some cabin/direction searches returned no results. ':'')+'Prices may change.';
     liveStatus.textContent=trip.liveFlightStatus;
     renderContent();
    }catch(error){liveStatus.textContent=error.message||'Could not retrieve live fares.';trip.liveFlightStatus=liveStatus.textContent}
@@ -175,31 +175,6 @@ function renderContent(){
   };
   panel.append(originField.wrap,destinationField.wrap,departField.wrap,returnField.wrap,searchButton,liveStatus);
   live.append(panel);
-  if(trip.liveFlightOptions?.length){
-   const liveGroups=[['outbound','Live outbound offers'],['return','Live return offers']];
-   liveGroups.forEach(([segment,label])=>{
-    const offers=trip.liveFlightOptions.filter(x=>x.segment===segment);
-    if(!offers.length)return;
-    const group=section(label,'Actual supplier quotes for the whole party. Each offer shows its full provider total and cabin.');
-    const cards=el('div','grid');
-    offers.slice(0,24).forEach(f=>{
-     const title=(f.airlines||'Airline')+' · '+f.cabin_class;
-     const meta=[f.route,f.flight_number,f.departure,f.arrival,f.duration,(Number(f.stops)===0?'Non-stop':f.stops+' stop(s)'),f.provider_live_mode?'Live mode':'Test mode'].filter(Boolean).join(' · ');
-     const total=f.provider_currency+' '+Number(f.provider_total_amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-     const c=card(title,f.fare_notes,meta,'Whole-party one-way total · '+total);
-     if(f.price_unverified){c.append(el('div','warn','Provider currency differs from the trip budget currency. This fare is shown but excluded from the budget.'))}
-     else{
-      const selected=trip.liveSelectedFlights?.[segment]===f._tripIndex;
-      const choose=el('button','btn'+(selected?'':' secondary'),selected?'Selected live fare':'Select live fare');
-      choose.type='button';choose.onclick=()=>{trip.liveSelectedFlights=trip.liveSelectedFlights||{};trip.liveSelectedFlights[segment]=f._tripIndex;trip.selectedFlights=trip.selectedFlights||{};delete trip.selectedFlights[segment];render()};
-      c.append(choose);if(selected)c.append(el('div','pill','Included in trip budget'));
-     }
-     cards.append(c);
-    });
-    group.append(cards);live.append(group);
-   });
-   live.append(el('p','meta',trip.liveFlightSearchNotice||'Live prices may change; confirm the offer again before booking.'));
-  }
   root.append(live);
   const filters=el('div','flight-filters');
   const cabin=el('label','flight-filter','Cabin class'),cabinSelect=el('select');
@@ -223,8 +198,8 @@ function renderContent(){
    const grid=el('div','grid');
    list.forEach(f=>{
     const meta=[f.cabin_class||'Cabin not specified',f.route,f.flight_number?'Flight '+f.flight_number:'',f.departure,f.arrival,f.duration,'Stops: '+(f.stops??'Not specified'),f.baggage].filter(Boolean).join(' · ');
-    const desc=[f.fare_notes,f.booking_advice].filter(Boolean).join(' ');
-    const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / passenger · one-way':'Fare unavailable · verify with airline';
+    const desc=[f.fare_notes,f.live_fare?'Price source: Google Flights via SerpApi · indicative only. No booking is available in TripPlanner.':f.booking_advice].filter(Boolean).join(' ');
+    const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / '+(f.live_fare?'adult':'passenger')+' · one-way':'Fare unavailable · verify with airline';
     const c=card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,fareLabel,f.booking_url);
     if((segment==='outbound'||segment==='return')&&!f.price_unverified&&positiveNumber(f.price_estimate)>0){
      const chosen=trip.selectedFlights?.[segment]===f._index||trip.liveSelectedFlights?.[segment]===f._index;
@@ -236,7 +211,7 @@ function renderContent(){
    });
    block.append(grid);root.append(block);
   });
-  if(!filtered.length)root.append(el('div','warn','No generated flight options match these filters. Change the filters or generate a new itinerary with different flight preferences.'));
+  if(!filtered.length)root.append(el('div','warn',trip.liveFlightOptions?.length?'No flight prices match these filters. Try another cabin or stop count.':'No generated flight options match these filters. Search flight prices above to retrieve current indicative fares.'));
   const chosen=heading('Your selected flights','Selected outbound and return fares feed directly into the trip budget.');
   const out=selectedFlightLeg('outbound'),ret=selectedFlightLeg('return');
   chosen.append(el('p','', 'Outbound: '+(out?(out.airlines||'Airline')+' · '+(out.cabin_class||'Cabin not specified')+' · '+money(positiveNumber(out.price_estimate),local):'Not selected')));
