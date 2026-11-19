@@ -146,23 +146,39 @@ function renderContent(){
    const wrap=el('label','live-flight-field',label),field=el('input');field.type='text';field.id=id;field.value=value;field.placeholder='City or airport';field.autocomplete='off';
    const list=el('datalist');list.id=id+'-places';field.setAttribute('list',list.id);wrap.append(field,list);return {wrap,field,list};
   };
-  const originField=makePlace('From',trip.flightSearch?.originText||trip.from||'Mumbai','live-flight-origin');
-  const destinationField=makePlace('To',trip.flightSearch?.destinationText||(trip.dest||'').split(/[,:;]/)[0]||'','live-flight-destination');
+  const savedOrigin=trip.from||'Mumbai';
+  const savedDestination=trip.areas?.[0]?.name||(trip.dest||'').split(/[,:;]/)[0]||'';
+  const originField=makePlace('From',trip.flightSearch?.originText||savedOrigin,'live-flight-origin');
+  const destinationField=makePlace('To',trip.flightSearch?.destinationText||savedDestination,'live-flight-destination');
   const dateField=(label,value)=>{const wrap=el('label','live-flight-field',label),field=el('input');field.type='date';field.value=value;wrap.append(field);return {wrap,field}};
   const departField=dateField('Departure',trip.d1),returnField=dateField('Return',trip.d2);
   const lookup=(field,list)=>{let timer;field.addEventListener('input',()=>{clearTimeout(timer);const q=field.value.trim();if(q.length<3)return;timer=setTimeout(async()=>{try{const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'places',query:q})});const data=await r.json();list.replaceChildren(...(data.places||[]).map(place=>{const option=el('option');option.value=place.label;return option}))}catch{}},600)})};
   lookup(originField.field,originField.list);lookup(destinationField.field,destinationField.list);
-  const searchButton=el('button','btn','Search flight prices');searchButton.type='button';
-  const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'One search uses up to 8 SerpApi searches (4 cabin classes × outbound and return). The free plan currently includes 250 searches/month; airport suggestions may also use searches.');
+  const searchButton=el('button','btn','Search using saved trip details');searchButton.type='button';
+  const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'Using your saved departure city, first destination base, travel dates and currency. No need to re-enter trip details.');
+  const diagnostics=el('div','live-flight-status','Checking SerpApi configuration and account usage…');
+  const refreshQuota=el('button','btn secondary','Refresh quota');refreshQuota.type='button';
+  const quotaRow=el('div','live-flight-panel');quotaRow.style.marginTop='8px';quotaRow.style.padding='10px 12px';
+  const updateQuota=async()=>{
+   diagnostics.textContent='Checking SerpApi configuration and account usage…';
+   try{
+    const response=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'status'})});
+    const info=await response.json();trip.serpApiStatus=info;
+    if(!info.configured){diagnostics.textContent='Provider: SerpApi · API key: Not configured. Add SERPAPI_API_KEY in Cloudflare Pages secrets.';return}
+    if(info.valid!==true){diagnostics.textContent='Provider: SerpApi · API key: Configured, but account check failed. '+(info.message||'Check the secret.');return}
+    diagnostics.textContent='Provider: SerpApi · API key: Valid · '+info.plan+' · Monthly usage: '+info.used+' / '+info.monthlyLimit+' · Remaining: '+info.remaining+(info.hourlyLimit?' · Hourly usage: '+info.hourlyUsed+' / '+info.hourlyLimit:'')+(info.renewalDate?' · Renews: '+info.renewalDate:'');
+   }catch(error){diagnostics.textContent='Provider: SerpApi · Could not check configuration or quota. '+(error.message||'Network error.')}
+  };
+  refreshQuota.onclick=updateQuota;
   searchButton.onclick=async()=>{
    const code=value=>{const match=String(value||'').match(/\(([A-Z]{3})\)\s*$/);return match?match[1]:/^[A-Z]{3}$/.test(String(value||'').trim())?String(value).trim().toUpperCase():''};
-   const fromCode=code(originField.field.value),toCode=code(destinationField.field.value);
-   if(!fromCode||!toCode){liveStatus.textContent='Choose a city/airport suggestion from the dropdown so its IATA code is included (for example Mumbai (BOM)).';return}
+   const fromValue=originField.field.value.trim(),toValue=destinationField.field.value.trim();
+   if(!fromValue||!toValue){liveStatus.textContent='Enter a departure city and destination.';return}
    if(!departField.field.value||!returnField.field.value||returnField.field.value<departField.field.value){liveStatus.textContent='Enter valid departure and return dates.';return}
-   searchButton.disabled=true;liveStatus.textContent='Searching Google Flights prices across four cabin classes and both directions…';
-   trip.flightSearch={originText:originField.field.value,destinationText:destinationField.field.value};
+   searchButton.disabled=true;liveStatus.textContent='Resolving airports and searching Google Flights across all four cabin classes and both directions…';
+   trip.flightSearch={originText:fromValue,destinationText:toValue};
    try{
-    const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromCode,destination:toCode,departureDate:departField.field.value,returnDate:returnField.field.value,currency:local})});
+    const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromValue,destination:toValue,departureDate:departField.field.value,returnDate:returnField.field.value,currency:local,adults:trip.adults||1,children:trip.children||0,infants:trip.infants||0,cabin:trip.requestedCabin||'Any',stops:trip.requestedStops||'Any'})});
     const data=await r.json();
     if(!r.ok){
      if(data.code==='QUOTA_EXCEEDED'||r.status===429){
@@ -184,8 +200,11 @@ function renderContent(){
    finally{searchButton.disabled=false}
   };
   panel.append(originField.wrap,destinationField.wrap,departField.wrap,returnField.wrap,searchButton,liveStatus);
-  live.append(panel);
+  quotaRow.append(diagnostics,refreshQuota);
+  live.append(panel,quotaRow);
   root.append(live);
+  if(!trip.serpApiStatus)updateQuota();
+  else refreshQuota.onclick=updateQuota;
   const filters=el('div','flight-filters');
   const cabin=el('label','flight-filter','Cabin class'),cabinSelect=el('select');
   ['Any','Economy','Premium Economy','Business','First Class'].forEach(v=>{const o=el('option','',v);o.value=v;cabinSelect.append(o)});
@@ -211,6 +230,7 @@ function renderContent(){
     const desc=[f.fare_notes,f.live_fare?'Price source: Google Flights via SerpApi · indicative only. No booking is available in TripPlanner.':f.booking_advice].filter(Boolean).join(' ');
     const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / '+(f.live_fare?'adult':'passenger')+' · one-way':'Fare unavailable · verify with airline';
     const c=card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,fareLabel,f.live_fare?f.source_url:f.booking_url);
+    c.prepend(el('div','pill',f.live_fare?'Live SerpApi price':'Original AI estimate'));
     if((segment==='outbound'||segment==='return')&&!f.price_unverified&&positiveNumber(f.price_estimate)>0){
      const chosen=trip.selectedFlights?.[segment]===f._index||trip.liveSelectedFlights?.[segment]===f._index;
      const button=el('button','btn'+(chosen?'':' secondary'),chosen?'Selected for '+segment:'Select this flight');
