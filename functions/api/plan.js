@@ -42,7 +42,6 @@ function validateFlightFareScale(flightData,budget,fxRate,homeCurrency){
  const currency=String(homeCurrency||"INR").toUpperCase();
  const baseCeiling=({INR:300000,USD:5000,EUR:5000,GBP:4000,AUD:7500,CAD:7000,SGD:6500,HKD:40000,AED:18000}[currency]||5000);
  const rate=Number(fxRate?.rate)||Number(budget?.exchange_rate_to_home)||0;
- const cabin=String(option.cabin_class||'Economy').toLowerCase();\n  const cabinMultiplier=cabin.includes('first')?5:cabin.includes('business')?3:cabin.includes('premium')?1.7:1;\n  const maxOneWayHome=baseCeiling*cabinMultiplier;\n  const maxOneWayLocal=rate>0?maxOneWayHome/rate:0;
  let checked=0,invalid=0;
  for(const option of options){
   const segment=String(option.segment||"").trim().toLowerCase();
@@ -50,8 +49,10 @@ function validateFlightFareScale(flightData,budget,fxRate,homeCurrency){
   const fare=Number(option.adult_price_per_person??option.price_estimate);
   if(!(fare>0)||!Number.isFinite(fare))continue;
   checked++;
-  // Flight researcher has no cabin selector: use a deliberately generous economy one-way ceiling.
-  // Never let a model-generated currency-scale error flow into the family budget.
+  const cabin=String(option.cabin_class||"Economy").toLowerCase();
+  const cabinMultiplier=cabin.includes("first")?5:cabin.includes("business")?3:cabin.includes("premium")?1.7:1;
+  const maxOneWayHome=baseCeiling*cabinMultiplier;
+  const maxOneWayLocal=rate>0?maxOneWayHome/rate:0;
   if(maxOneWayLocal>0&&fare*rate>maxOneWayHome){
    option.price_estimate=0;
    option.adult_price_per_person=0;
@@ -64,7 +65,7 @@ function validateFlightFareScale(flightData,budget,fxRate,homeCurrency){
  }
  const validOutbound=options.some(x=>String(x.segment||"").trim().toLowerCase()==="outbound"&&Number(x.price_estimate)>0);
  const validReturn=options.some(x=>String(x.segment||"").trim().toLowerCase()==="return"&&Number(x.price_estimate)>0);
- return {checked,invalid,validOutbound,validReturn,maxOneWayHome,homeCurrency:currency,roundTripUsable:validOutbound&&validReturn};
+ return {checked,invalid,validOutbound,validReturn,baseCeiling,homeCurrency:currency,roundTripUsable:validOutbound&&validReturn};
 }
 function validDate(s){if(!DATE.test(s))return false;const d=new Date(s+"T00:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s}
 function nightsOf(v){const m=String(v??"").match(/\d+/);return m?Math.max(0,Number(m[0])):0}
