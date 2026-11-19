@@ -1,5 +1,5 @@
 {
-  "version": "1.4.4",
+  "version": "1.4.5",
   "released": "2026-11-19",
-  "releaseName": "Use saved trip details and show SerpApi account diagnostics"
+  "releaseName": "Deduplicate live flight options and highlight SerpApi cards"
 }
