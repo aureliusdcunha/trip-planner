@@ -104,7 +104,7 @@ function extractJsonText(value){
  return "";
 }
 function timeStartMinutes(value){
- const match=String(value||"").match(/(?:^|\\b)([01]?\\d|2[0-3]):([0-5]\\d)\\b/);
+ const match=String(value||"").match(/(?:^|\b)([01]?\d|2[0-3]):([0-5]\d)\b/);
  return match?Number(match[1])*60+Number(match[2]):null;
 }
 function validateAgent(kind,data,ctx){
