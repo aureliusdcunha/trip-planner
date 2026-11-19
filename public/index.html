@@ -115,17 +115,20 @@ function renderContent(){
   g=el('div','grid');trip.internal_transport.forEach(x=>g.append(card(x.mode+' · '+x.route,x.pros,[x.duration,x.booking_advice].filter(Boolean).join(' · '),money(x.price_estimate,local),x.booking_url)));s.append(g);root.append(s);
  }
  if(active==='Hotels'){
+  const wantedHotelTier=hotelTierForStyle(trip.bud);
+  const selectedHotelLabel=trip.bud==='Luxury'?'Splurge':trip.bud;
   trip.areas.forEach(a=>{
-   s=heading(a.name+' · '+a.nights,'Compare a budget, mid-range and splurge property. Confirm family/triple-room configuration directly before booking.');
+   s=heading(a.name+' · '+a.nights,'Showing only the '+selectedHotelLabel+' property. Confirm family/triple-room configuration directly before booking.');
    g=el('div','grid');
-   const tiers=[...(a.hotel_options||[])].sort((x,y)=>{
+   const tiers=(a.hotel_options||[]).filter(h=>styleKey(h.tier)===wantedHotelTier).sort((x,y)=>{
     const rank=v=>{const t=String(v||'').toLowerCase();return t.includes('budget')?0:t.includes('mid')?1:t.includes('splurge')?2:3};
     return rank(x.tier)-rank(y.tier);
    });
+   if(!tiers.length)g.append(card('No matching '+selectedHotelLabel+' property returned','This base did not return a property in the selected budget tier. Regenerate the report to research that tier.'));
    tiers.forEach(h=>{
     const meta=[h.tier,h.stars,h.location,h.room_notes].filter(Boolean).join(' · ');
     const desc=[h.why,h.facilities?'Facilities: '+h.facilities:'',h.family_fit?'Family fit: '+h.family_fit:'',h.airport_transfer?'Airport transfer: '+h.airport_transfer:''].filter(Boolean).join(' ');
-    const c=card(h.name,desc,meta,money(h.price_per_night,local)+' / room / night',h.booking_url);if(styleKey(h.tier)===hotelTierForStyle(trip.bud))c.classList.add('selected-budget');g.append(c);
+    g.append(card(h.name,desc,meta,money(h.price_per_night,local)+' / room / night',h.booking_url));
    });
    s.append(g);root.append(s);
   });
@@ -150,8 +153,13 @@ function renderContent(){
   s.append(el('h3','','Experience notes'));s.append(g);root.append(s);
  }
  if(active==='Dining'){
-  s=heading('Food and dining ideas','Compare the three price tiers. The highlighted tier is used by the live budget calculator.');
-  g=el('div','grid');trip.dining.forEach(x=>{const c=card(x.name,x.why_visit,[x.tier,x.area,x.cuisine,x.signature,x.meal_type].filter(Boolean).join(' · '),money(Number(x.adult_price_per_person??x.price_per_person),local)+' / adult',x.booking_url);if(styleKey(x.tier)===styleKey(trip.bud))c.classList.add('selected-budget');g.append(c)});s.append(g);root.append(s);
+  const wantedDiningTier=styleKey(tierForStyle(trip.bud));
+  const diningOptions=(trip.dining||[]).filter(x=>styleKey(x.tier)===wantedDiningTier);
+  s=heading('Food and dining ideas · '+trip.bud,'Showing only dining options in the selected '+trip.bud.toLowerCase()+' tier.');
+  g=el('div','grid');
+  if(!diningOptions.length)g.append(card('No matching dining options returned','No restaurants were returned for this budget tier. Regenerate the report to research matching dining choices.'));
+  diningOptions.forEach(x=>g.append(card(x.name,x.why_visit,[x.tier,x.area,x.cuisine,x.signature,x.meal_type].filter(Boolean).join(' · '),money(Number(x.adult_price_per_person??x.price_per_person),local)+' / adult',x.booking_url)));
+  s.append(g);root.append(s);
  }
  if(active==='Shopping guide'&&trip.includeShopping!==false){
   s=heading('Family shopping guide','Suggested markets, local products and useful shopping tips by area.');
