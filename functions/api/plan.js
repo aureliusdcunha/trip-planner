@@ -352,6 +352,7 @@ export async function onRequestPost({request,env}){
   const adults=Math.min(12,Math.max(1,parseInt(b.adults,10)||1));
   const children=Math.max(0,Math.min(12,parseInt(b.children,10)||0));
   const infants=Math.max(0,Math.min(12,parseInt(b.infants,10)||0));
+  if(infants>adults)return J({error:"Infants cannot exceed adults; each lap infant needs an accompanying adult."},400);
   const pax=adults+children+infants;
   if(pax>12)return J({error:"The total party size (adults, children and infants) cannot exceed 12."},400);
   const childAges=Array.isArray(b.childAges)?b.childAges.map(x=>Number.parseInt(x,10)).filter(x=>Number.isInteger(x)&&x>=2&&x<=17).slice(0,12):[];
