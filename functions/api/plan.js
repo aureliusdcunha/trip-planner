@@ -41,7 +41,7 @@ function validateFlightFareScale(flightData,budget,fxRate,homeCurrency){
  const options=Array.isArray(flightData?.flight_options)?flightData.flight_options:[];
  const currency=String(homeCurrency||"INR").toUpperCase();
  const maxOneWayHome=({INR:300000,USD:5000,EUR:5000,GBP:4000,AUD:7500,CAD:7000,SGD:6500,HKD:40000,AED:18000}[currency]||5000);
- const rate=Number(fxRate?.rate)||0;
+ const rate=Number(fxRate?.rate)||Number(budget?.exchange_rate_to_home)||0;
  const maxOneWayLocal=rate>0?maxOneWayHome/rate:0;
  let checked=0,invalid=0;
  for(const option of options){
