@@ -79,7 +79,7 @@ function tierPartyMealRate(style,baseName){
  let pool=all.filter(x=>{const area=String(x.area||'').toLowerCase();return area&&(base.includes(area)||area.includes(base))});
  if(!pool.length)pool=all;if(!pool.length)return 0;
  const average=(key,fallback)=>{const values=pool.map(x=>{const raw=x[key];return raw!==undefined&&raw!==null&&raw!==''&&Number.isFinite(Number(raw))?Math.max(0,Number(raw)):positiveNumber(fallback(x))});return values.length?values.reduce((sum,x)=>sum+x,0)/values.length:0};
- const adult=average('adult_price_per_person',x=>x.price_per_person),child=average('child_price_per_person',x=>positiveNumber(x.adult_price_per_person||x.price_per_person)*.7),infant=average('infant_price_per_person',x=>positiveNumber(x.adult_price_per_person||x.price_per_person)*.1);
+ const adult=average('adult_price_per_person',x=>x.price_per_person),child=Math.min(average('child_price_per_person',x=>positiveNumber(x.adult_price_per_person||x.price_per_person)*.7),adult*.7),infant=Math.min(average('infant_price_per_person',x=>positiveNumber(x.adult_price_per_person||x.price_per_person)*.1),adult*.1);
  return adult*(trip.adults||0)+child*(trip.children||0)+infant*(trip.infants||0);
 }
 function budgetCalc(){
