@@ -54,7 +54,7 @@ export async function onRequestPost({request,env}){
   const requests=[];
   for(const cabin of cabins)for(const leg of [{segment:"outbound",from:originCode,to:destinationCode,date:b.departureDate},{segment:"return",from:destinationCode,to:originCode,date:b.returnDate}]){
    requests.push((async()=>{
-    const result=await duffel("/air/offer_requests?return_offers=true&supplier_timeout=18000",{...token},{method:"POST",body:JSON.stringify({data:{slices:[{origin:leg.from,destination:leg.to,departure_date:leg.date}],passengers,cabin_class:cabin,max_connections:2}})});
+    const result=await duffel("/air/offer_requests?return_offers=true&supplier_timeout=18000",token,{method:"POST",body:JSON.stringify({data:{slices:[{origin:leg.from,destination:leg.to,departure_date:leg.date}],passengers,cabin_class:cabin,max_connections:2}})});
     const offers=result.data?.offers||[];
     return offers.map(o=>mapOffer(o,leg.segment,cabin,paxCount)).filter(Boolean);
    })());
