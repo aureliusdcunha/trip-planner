@@ -171,7 +171,7 @@ function renderContent(){
    try{
     const response=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'status'})});
     const info=await response.json();trip.serpApiStatus=info;
-    if(!info.configured){diagnostics.textContent='Provider: SerpApi · API key: Not configured. Add SERPAPI_API_KEY in Cloudflare Pages secrets.';return}
+    if(!info.configured){diagnostics.textContent='Provider: SerpApi · API key: Not configured. Add SERPAPI_API_KEY in Cloudflare Pages secrets. Secondary providers are used automatically if SerpApi quota is exhausted.';return}
     if(info.valid!==true){diagnostics.textContent='Provider: SerpApi · API key: Configured, but account check failed. '+(info.message||'Check the secret.');return}
     diagnostics.textContent='Provider: SerpApi · API key: Valid · '+info.plan+' · Monthly usage: '+info.used+' / '+info.monthlyLimit+' · Remaining: '+info.remaining+(info.hourlyLimit?' · Hourly usage: '+info.hourlyUsed+' / '+info.hourlyLimit:'')+(info.renewalDate?' · Renews: '+info.renewalDate:'');
    }catch(error){diagnostics.textContent='Provider: SerpApi · Could not check configuration or quota. '+(error.message||'Network error.')}
@@ -197,10 +197,10 @@ function renderContent(){
      throw new Error(data.error||'Flight price search failed.');
     }
     trip.flightFallbackMode=false;
-    trip.liveFlightOptions=data.options||[];trip.liveFlightSearchAt=data.searchedAt;trip.liveFlightSearchNotice=data.notice;trip.liveSelectedFlights={};
+    trip.liveFlightOptions=data.options||[];trip.liveFlightSearchAt=data.searchedAt;trip.liveFlightSearchNotice=data.notice;trip.liveFlightProvider=data.provider||'SerpApi';trip.liveSelectedFlights={};
     const start=trip.flight_options.length;trip.flight_options.push(...trip.liveFlightOptions);
     trip.liveFlightOptions=trip.liveFlightOptions.map((f,i)=>({...f,_tripIndex:start+i}));
-    trip.liveFlightStatus='Found '+trip.liveFlightOptions.length+' indicative flight prices from Google Flights · '+(data.searchesUsed||8)+' searches used. '+(data.partial?'Some cabin/direction searches returned no results. ':'')+'Prices may change.';
+    trip.liveFlightStatus='Found '+trip.liveFlightOptions.length+' indicative flight prices via '+(data.provider||'SerpApi')+' · '+(data.searchesUsed||8)+' searches used. '+(data.partial?'Some cabin/direction searches returned no results. ':'')+'Prices may change.';
     liveStatus.textContent=trip.liveFlightStatus;
     renderContent();
    }catch(error){liveStatus.textContent=error.message||'Could not retrieve flight prices.';trip.liveFlightStatus=liveStatus.textContent}
@@ -242,11 +242,11 @@ function renderContent(){
    const grid=el('div','grid');
    list.forEach(f=>{
     const meta=[f.cabin_class||'Cabin not specified',f.route,f.flight_number?'Flight '+f.flight_number:'',f.departure,f.arrival,f.duration,'Stops: '+(f.stops??'Not specified'),f.layovers?'Layover: '+f.layovers:'',f.baggage].filter(Boolean).join(' · ');
-    const desc=[f.fare_notes,f.live_fare?'Price source: Google Flights via SerpApi · indicative only. No booking is available in TripPlanner.':f.booking_advice].filter(Boolean).join(' ');
+    const desc=[f.fare_notes,f.live_fare?'Price source: '+(f.price_source||trip.liveFlightProvider||'live provider')+' · indicative only. No booking is available in TripPlanner.':f.booking_advice].filter(Boolean).join(' ');
     const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / '+(f.live_fare?'adult':'passenger')+' · one-way':'Fare unavailable · verify with airline';
     const c=card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,fareLabel,f.live_fare?f.source_url:f.booking_url);
     if(f.live_fare)c.classList.add('live-flight-card');
-    c.prepend(el('div','pill',f.live_fare?'Live SerpApi price':'Original AI estimate'));
+    c.prepend(el('div','pill',f.live_fare?'Live '+(f.price_source||trip.liveFlightProvider||'provider')+' price':'Original AI estimate'));
     if((segment==='outbound'||segment==='return')&&!f.price_unverified&&positiveNumber(f.price_estimate)>0){
      const chosen=trip.selectedFlights?.[segment]===f._index||trip.liveSelectedFlights?.[segment]===f._index;
      const button=el('button','btn'+(chosen?'':' secondary'),chosen?'Selected for '+segment:'Select this flight');
