@@ -1,5 +1,5 @@
 {
-  "version": "1.4.5",
+  "version": "1.4.6",
   "released": "2026-11-19",
-  "releaseName": "Deduplicate live flight options and highlight SerpApi cards"
+  "releaseName": "Show budget totals with and without shopping"
 }
