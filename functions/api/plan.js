@@ -23,7 +23,7 @@ const schemas={
   shopping_guide:arr(obj({area:str,item:str,category:str,price_estimate:num,tip:str})),
   tips:arr(str),caveats:arr(str)
  }),
- day:obj({days:arr(obj({date:str,base:str,title:str,subtitle:str,pace:str,activities:arr(obj({time:str,name:str,category:str,description:str,duration:str,transport:str,transport_details:str,cost_estimate:num,adult_cost_estimate:num,child_cost_estimate:num,infant_cost_estimate:num,booking_url:str,child_friendly:str,kid_note:str,shopping_note:str})),meals:arr(obj({time:str,meal:str,suggestion:str,price_estimate:num,adult_price_estimate:num,child_price_estimate:num,infant_price_estimate:num})),overnight:str,day_estimate:num}))})
+ day:obj({days:arr(obj({date:str,base:str,title:str,subtitle:str,pace:str,activities:arr(obj({time:str,name:str,category:str,description:str,duration:str,transport:str,transport_title:str,transport_details:str,cost_estimate:num,adult_cost_estimate:num,child_cost_estimate:num,infant_cost_estimate:num,booking_url:str,child_friendly:str,kid_note:str,shopping_note:str})),meals:arr(obj({time:str,meal:str,suggestion:str,price_estimate:num,adult_price_estimate:num,child_price_estimate:num,infant_price_estimate:num})),overnight:str,day_estimate:num}))})
 };
 async function getExchangeRate(base,quote){
  const from=String(base||"").toUpperCase(),to=String(quote||"").toUpperCase();
@@ -88,13 +88,18 @@ function validateAgent(kind,data,ctx){
  if(kind==="attractions"&&(!Array.isArray(data.highlights)||data.highlights.length<5))return "The attractions researcher must return at least five distinct experiences.";
  if(kind==="dining"&&(!Array.isArray(data.dining)||data.dining.length<4))return "The dining researcher must return at least four distinct options.";
  if(kind==="guide"){
-  const keys=["exchange_rate_to_home","international_flight_per_person","local_transport_total","hotel_per_room_per_night","activity_per_person_per_day","food_per_person_per_day","shopping_per_person","contingency_percent"];
+  const keys=["exchange_rate_to_home","international_flight_per_person","international_flight_adult","international_flight_child","international_flight_infant","local_transport_total","hotel_per_room_per_night","activity_per_person_per_day","food_per_person_per_day","shopping_per_person","contingency_percent"];
   if(!data.practical||!data.budget||keys.some(k=>!Number.isFinite(data.budget[k])||data.budget[k]<0)||!Array.isArray(data.tips)||!Array.isArray(data.caveats)||!data.budget_strategy||!Array.isArray(data.shopping_guide))return "The practical/budget researcher returned incomplete data.";
+  if(!Array.isArray(data.budget_strategies)||!["Budget","Mid-range","Luxury"].every(style=>data.budget_strategies.some(x=>String(x.style||"").toLowerCase()===style.toLowerCase())))return "The budget researcher must return Budget, Mid-range and Luxury guidance.";
   if(String(data.budget.currency||"").toUpperCase()!==String(ctx.trip.cur||"").toUpperCase()&&data.budget.exchange_rate_to_home<=0)return "The budget researcher must provide a positive indicative home-currency conversion rate as a fallback.";
  }
  if(kind==="day"){
   if(!Array.isArray(data.days)||data.days.length!==1)return "The day planner must return exactly one day.";
   const d=data.days[0];if(d.date!==ctx.date||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2)return "The daily plan needs at least three activities, two meals and the requested date.";
+  if(d.activities.some(a=>!a.time||!a.name||!a.description||!a.transport_details||!a.kid_note||!Number.isFinite(a.adult_cost_estimate)||!Number.isFinite(a.child_cost_estimate)||!Number.isFinite(a.infant_cost_estimate)))return "Every itinerary activity needs a time, useful details, transport notes, a child/family note and adult/child/infant costs.";
+  if(ctx.trip.includeShopping&&d.activities.some(a=>String(a.shopping_note||"").trim())===false){} 
+  if(d.meals.some(m=>!m.time||!Number.isFinite(m.adult_price_estimate)||!Number.isFinite(m.child_price_estimate)||!Number.isFinite(m.infant_price_estimate)))return "Every meal needs a time and separate adult, child and infant estimates.";
+  if(!ctx.trip.includeShopping&&d.activities.some(a=>String(a.shopping_note||"").trim()))return "Shopping stops must be omitted when the traveller has disabled shopping.";
  }
  return null;
 }
