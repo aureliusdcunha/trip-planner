@@ -37,6 +37,36 @@ async function getExchangeRate(base,quote){
   return {rate:data.rate,date:String(data.date||""),source:"Frankfurter reference rates"};
  }catch{return null}
 }
+function validateFlightFareScale(flightData,budget,fxRate,homeCurrency){
+ const options=Array.isArray(flightData?.flight_options)?flightData.flight_options:[];
+ const roundTrip=Number(budget?.international_flight_adult||budget?.international_flight_per_person||0);
+ if(!(roundTrip>0)||!Number.isFinite(roundTrip))return {checked:0,adjusted:0,reason:"No independent round-trip airfare baseline was supplied."};
+ const oneWayBaseline=roundTrip/2;
+ const rate=Number(fxRate?.rate)||0;
+ const baselineHome=oneWayBaseline*rate;
+ let adjusted=0,checked=0;
+ for(const option of options){
+  const segment=String(option.segment||"").trim().toLowerCase();
+  if(!["outbound","return","alternative"].includes(segment))continue;
+  const fare=Number(option.adult_price_per_person??option.price_estimate);
+  if(!(fare>0)||!Number.isFinite(fare))continue;
+  checked++;
+  // A one-way fare should be in the same order of magnitude as half the independent round-trip budget estimate.
+  // A >4x disagreement is a likely currency/unit error or hallucinated fare, not a legitimate tier difference.
+  if(fare>oneWayBaseline*4){
+   const replacement=oneWayBaseline;
+   option.price_estimate=replacement;
+   option.adult_price_per_person=replacement;
+   if(Number(option.child_price_per_person)>fare*1.5||!Number.isFinite(Number(option.child_price_per_person)))option.child_price_per_person=replacement;
+   if(Number(option.infant_price_per_person)>fare*1.5||!Number.isFinite(Number(option.infant_price_per_person)))option.infant_price_per_person=replacement*.1;
+   const note=" Price sanity check: the original model fare was more than four times the independent round-trip budget baseline per leg, so this card uses half of that round-trip baseline as an indicative one-way estimate. Verify actual fares with the airline or booking provider.";
+   option.fare_notes=[String(option.fare_notes||"").trim(),note.trim()].filter(Boolean).join(" ");
+   option.price_adjusted_for_sanity=true;
+   adjusted++;
+  }
+ }
+ return {checked,adjusted,baselineLocal:oneWayBaseline,baselineHome:baselineHome||null,homeCurrency};
+}
 function validDate(s){if(!DATE.test(s))return false;const d=new Date(s+"T00:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s}
 function nightsOf(v){const m=String(v??"").match(/\d+/);return m?Math.max(0,Number(m[0])):0}
 function normaliseAreas(areas,tripNights,maxBases){
@@ -109,7 +139,7 @@ function promptFor(kind,ctx){
  const searchInstruction=ctx.useSearch?"You have Google Search available. Actively run at least one focused search for this exact assignment and ground recommendations in the returned sources; do not rely only on model memory. Prefer official or reputable primary sources.":"Live Google Search was not enabled. Use established knowledge and label prices, schedules and availability as indicative; do not imply you checked live sources.";
  const common="Destination: "+t.dest+". Dates: "+t.d1+" to "+t.d2+" inclusive. "+party+" "+searchInstruction+" Use accurate real places. Do not invent live availability, exact fares, flight schedules or opening hours. All numeric price fields must be in destination local currency (ISO code). Never embed currency amounts or currency symbols in narrative text fields; put all prices only in numeric price fields so the application can convert and display them consistently in the traveller's home currency with local currency in brackets. If uncertain, say so rather than inventing.";
  if(kind==="route")return "You are the ROUTE ARCHITECT for a travel-planning team. Your only task is choosing sensible overnight bases and the route between them. "+common+" Return "+ctx.maxBases+" or fewer bases. The number of nights must add up to exactly "+ctx.nights+"; for a day trip, return one base with 0 nights. Avoid unnecessary backtracking and group geographically. For each base return its name, nights as e.g. '3 nights', and a short reason. Also return overview, best_time, destination_currency, currency_code, local_context and route_summary. currency_code must be the ISO 4217 three-letter currency code for the destination local currency (for example THB, JPY, EUR). Do not return hotels, activities, meals, flights or budget. Keep concise.";
- if(kind==="flights")return "You are the FLIGHT SPECIALIST. Research international flight recommendations from "+t.from+" to "+t.dest+" and return. "+common+" Return at least 3 comparison-ready options: at least one outbound, one return, and a best-value or alternative fare option. Each option must include segment (Outbound, Return or Alternative), route, airlines, flight_number (leave blank unless verified), departure airport/time (write indicative if not verified), arrival airport/time, duration, number of stops, numeric one-way fare estimates per passenger in local currency: price_estimate and adult_price_per_person (adult fare), child_price_per_person and infant_price_per_person. If a child fare is unavailable, use the adult fare as a clearly labelled planning fallback; if an infant lap fare is unavailable, use 10% of the adult fare as a provisional estimate and state the assumption in fare_notes. Include baggage allowance, fare_notes, booking_advice and booking_url. The outbound and return options are separate one-way legs; the Alternative is a choice and must not be added as another leg. Never put a round-trip price in a one-way field. Prefer sensible family itineraries, convenient airport pairings and no unnecessary overnight layovers. If the route is multi-city, include relevant open-jaw or internal flight legs as separate options. Never invent exact flight numbers or times; leave them blank when not verified. Do not claim seats are available. Include getting_there as a concise arrival/departure strategy. No hotels or day plans.";
+ if(kind==="flights")return "You are the FLIGHT SPECIALIST. Research international flight recommendations from "+t.from+" to "+t.dest+" and return. "+common+" Return at least 3 comparison-ready options: at least one outbound, one return, and a best-value or alternative fare option. Assume standard economy unless the traveller explicitly specifies another cabin. Currency/unit safety is critical: all numeric fares must be expressed in the destination's ISO local currency units, not the traveller's home currency, not minor units, and not a party total. Before returning, cross-check that each one-way fare is plausible for this origin/destination and that its conversion to "+t.cur+" is a realistic airline fare; do not invent a large round number to fill a field. If a reliable price cannot be established, use a conservative clearly labelled indicative estimate rather than an implausible figure. Each option must include segment (Outbound, Return or Alternative), route, airlines, flight_number (leave blank unless verified), departure airport/time (write indicative if not verified), arrival airport/time, duration, number of stops, numeric one-way fare estimates per passenger in local currency: price_estimate and adult_price_per_person (adult fare), child_price_per_person and infant_price_per_person. If a child fare is unavailable, use the adult fare as a clearly labelled planning fallback; if an infant lap fare is unavailable, use 10% of the adult fare as a provisional estimate and state the assumption in fare_notes. Include baggage allowance, fare_notes, booking_advice and booking_url. The outbound and return options are separate one-way legs; the Alternative is a choice and must not be added as another leg. Never put a round-trip price in a one-way field. Prefer sensible family itineraries, convenient airport pairings and no unnecessary overnight layovers. If the route is multi-city, include relevant open-jaw or internal flight legs as separate options. Never invent exact flight numbers or times; leave them blank when not verified. Do not claim seats are available. Include getting_there as a concise arrival/departure strategy. No hotels or day plans.";
  if(kind==="transport")return "You are the LOCAL TRANSPORT SPECIALIST. Research only realistic transfer options for this route. "+common+" Route bases: "+ctx.areas.map(a=>a.name+" ("+a.nights+")").join(" → ")+". Return 2-4 useful transfers including mode, route, indicative total or route fare in destination currency, duration and pros. Do not add daily attractions or flights.";
  if(kind==="stay")return "You are the ACCOMMODATION SPECIALIST for "+ctx.area.name+". Research lodging for this base only. "+common+" Suggested stay: "+ctx.area.nights+". Party composition: "+t.pax+" travellers, "+t.adults+" adults, "+t.children+" children and "+t.infants+" infants. Return exactly 3 specific real hotel properties, one in each tier: Budget, Mid-range and Splurge. Do not return generic descriptions in place of property names. For each include tier, name, location/neighbourhood, star category if known, indicative price per night for one family room sized for up to 2 adults + 1 child (infants may share only where property policy allows), in destination local currency; clearly state if this family occupancy requires an extra bed or a second room. Include family room/triple-room notes, facilities (pool, breakfast, shuttle, kids amenities when verified), family_fit, airport_transfer and why it fits this trip. Include booking_url only if a trusted official property or booking page is known. Do not claim rooms are available. Do not research other bases.";
  if(kind==="attractions")return "You are the ATTRACTIONS SPECIALIST for "+ctx.area.name+". Research only real attractions, cultural experiences and activities in or near this base. "+common+" Return 5-8 high-value, distinct experiences suitable for the dates and interests. Each must include area, category, duration, numeric adult price per person, numeric child price per child, numeric infant price per infant, numeric family total for this party where possible using the actual party counts, why visit, practical tip, family_fit and official booking_url only when verified. Use 0 for free activities. State age restrictions and booking lead time when relevant, but do not invent either. No hotels, dining or day-by-day schedule.";
@@ -440,6 +470,13 @@ export async function onRequestPost({request,env}){
       const localCurrency=String(route.data.currency_code||guide.budget.currency||"").toUpperCase();
       const homeCurrency=String(trip.cur||"INR").toUpperCase();
       const fxRate=await fxRatePromise;
+      const flightResearch=specialistResults.find(x=>x.kind==="flights")?.data;
+      const fareScaleCheck=validateFlightFareScale(flightResearch,guide.budget,fxRate,homeCurrency);
+      if(fareScaleCheck.adjusted){
+       guide.caveats=Array.isArray(guide.caveats)?guide.caveats:[];
+       guide.caveats.push(fareScaleCheck.adjusted+" flight fare estimate(s) were adjusted because the flight specialist's one-way amount was more than four times the independent round-trip budget baseline per leg. The adjusted values are planning estimates, not live quotes; verify with an airline or booking provider.");
+       emit({type:"model_notice",message:"A flight fare sanity check found an unusually large mismatch against the independent budget estimate. Affected one-way fares were adjusted to avoid overstating the trip budget."});
+      }
       guide.budget.currency=localCurrency;
       guide.budget.home_currency=homeCurrency;
       if(localCurrency===homeCurrency){
