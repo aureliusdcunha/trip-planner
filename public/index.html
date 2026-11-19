@@ -172,7 +172,7 @@ function renderContent(){
   flights.forEach(f=>{
    const meta=[f.segment,f.route,f.flight_number?'Flight '+f.flight_number:'',f.departure,f.arrival,f.duration,f.stops,f.baggage].filter(Boolean).join(' · ');
    const childFare=Number(f.child_price_estimate)>0?'Child: '+money(f.child_price_estimate,local)+' / passenger · one-way':'Child fare: same as adult unless carrier confirms a discount';
-   const infantFare=Number(f.infant_price_estimate)>0?'Lap infant: '+money(f.infant_price_estimate,local)+' / passenger · one-way':'Lap-infant fare uses an estimate; confirm airline rules';
+   const infantFare=Number(f.infant_price_estimate)>0?'Lap infant: '+money(f.infant_price_estimate,local)+' / passenger · one-way':'Lap infant: approx. '+money((Number(f.price_estimate)||0)*.1,local)+' / passenger · one-way (10% planning estimate; confirm airline rules)';
    const desc=[f.fare_notes,f.booking_advice,childFare,infantFare].filter(Boolean).join(' ');
    g.append(card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,money(f.price_estimate,local)+' / adult · one-way',f.booking_url));
   });
