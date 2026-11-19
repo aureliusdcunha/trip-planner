@@ -483,7 +483,7 @@ export async function onRequestPost({request,env}){
       const fareScaleCheck=validateFlightFareScale(flightResearch,guide.budget,fxRate,homeCurrency);
       if(fareScaleCheck.invalid){
        guide.caveats=Array.isArray(guide.caveats)?guide.caveats:[];
-       guide.caveats.push(fareScaleCheck.invalid+" flight fare option(s) exceeded the generous "+homeCurrency+" "+fareScaleCheck.maxOneWayHome.toLocaleString("en-US")+" one-way economy sanity ceiling. Unverified flight fares have been excluded from the cards and trip total; the total will be understated until you verify and enter real fares.");
+       guide.caveats.push(fareScaleCheck.invalid+" flight fare option(s) exceeded the generous "+homeCurrency+" "+fareScaleCheck.maxOneWayHome.toLocaleString("en-US")+" cabin-adjusted one-way sanity ceiling. Unverified flight fares have been excluded from the cards and trip total; the total will be understated until you verify and enter real fares.");
        if(!fareScaleCheck.roundTripUsable){
         guide.budget.international_flight_per_person=0;
         guide.budget.international_flight_adult=0;
