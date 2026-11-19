@@ -85,7 +85,7 @@ function tierPartyMealRate(style,baseName){
 function budgetCalc(){
  const b=trip.budget,pax=trip.pax||1,adults=trip.adults||pax,children=trip.children||0,infants=trip.infants||0,days=trip.days.length,nights=Math.max(0,days-1);
  // Planning assumption: one family room accommodates up to two adults and one child; infants share with adults.
- const rooms=Math.max(1,Math.ceil(adults/2),Math.ceil((adults+children)/3));
+ const rooms=Math.max(1,Math.ceil(adults/2),children,Math.ceil((adults+children)/3));
  // Flight cards are one-way per passenger. Use the lowest priced outbound and return options;
  // an Alternative is a choice, not another leg, so it is never added to the round trip.
  const outbound=cheapestFlightLeg('outbound'),returnFlight=cheapestFlightLeg('return'),hasRoundTripOptions=!!(outbound&&returnFlight);
@@ -246,7 +246,7 @@ function renderContent(){
   [['International flights · whole party, round trip',money(c.flights,c.code)],['Local transport',money(c.local,c.code)],['Accommodation · '+trip.bud+' tier ('+c.rooms+' rooms × '+c.nights+' nights)',money(c.hotel,c.code)],['Activities & tickets',money(c.activities,c.code)],['Food & dining · scheduled meals',money(c.food,c.code)],...(trip.includeShopping!==false?[['Shopping & miscellaneous',money(c.shopping,c.code)]]:[]),['Contingency ('+(b.contingency_percent||0)+'%)',money(c.contingency,c.code)],['Estimated total',money(c.total,c.code)]].forEach(x=>{const tr=el('tr'),emphasize=x[0]==='Estimated total';const a=el('td',emphasize?'budget-total':'',x[0]),v=el('td',emphasize?'budget-total':'',x[1]);add(tr,a,v);table.append(tr)});
   s.append(table);
   const flightRates=[c.adults+' adults × '+money(c.flightAdult,c.code),...(c.children?[c.children+' children × '+money(c.flightChild,c.code)]:[]),...(c.infants?[c.infants+' infants × '+money(c.flightInfant,c.code)]:[])].join(' · ');
-  s.append(el('p','muted','Round-trip airfare per traveller: '+flightRates+' · Whole-party flight subtotal: '+money(c.flights,c.code)+'.'));
+  s.append(el('p','muted','Round-trip airfare per traveller: '+flightRates+' · Whole-party flight subtotal: '+money(c.flights,c.code)+'. '+(c.hasRoundTripOptions?'Calculated from the outbound and return one-way cards; Alternative fares are not added.':'Flight cards did not contain both legs, so the budget researcher round-trip fare is used as a fallback.')));
   const perTraveller=el('div','grid');
   if(c.adults)perTraveller.append(card('Estimated per adult',money(c.perAdult,c.code),'Round-trip adult airfare plus an equal share of common trip costs.'));
   if(c.children)perTraveller.append(card('Estimated per child',money(c.perChild,c.code),'Round-trip child airfare plus an equal share of common trip costs.'));
@@ -256,7 +256,7 @@ function renderContent(){
   s.append(el('p','muted','Shared costs are allocated evenly across the party. Hotel rooms assume up to 2 adults + 1 child per room, with infants sharing. Food sums the timed per-person meal estimates in the itinerary; changing budget style scales those estimates using researched dining-tier prices. All estimates are displayed in '+(b.home_currency||$('cur').value)+' first, with '+c.code+' local amounts in brackets.'));
   if(c.code!==b.home_currency){const rateText=Number(c.rate)>0?'1 '+c.code+' = '+Number(c.rate).toFixed(4)+' '+b.home_currency+' · '+(b.exchange_rate_source||'reference rate')+(b.exchange_rate_date?' · effective '+b.exchange_rate_date:''):'Reference rate unavailable';s.append(el(Number(c.rate)>0?'meta':'warn','',rateText))}
   s.append(el('h3','','Calculation assumptions'));
-  s.append(ul((b.assumptions||[]).concat(['Airfare is calculated by adult, child and infant fare estimates where supplied.','Activity totals use separate adult, child and infant admission estimates from the daily plan.','Hotel estimate uses up to 2 adults + 1 child per room; infants are assumed to share.','Food sums the itinerary meal prices for the party; Budget/Mid-range/Luxury selection scales meal estimates using researched restaurant prices.','Infants are assumed to share a room; confirm each property’s child/infant occupancy and cot rules.'])));
+  s.append(ul((b.assumptions||[]).concat(['When both outbound and return cards are present, one-way passenger fares are added to form the round-trip total; Alternative fares are not added. Otherwise, the guide round-trip fare is a fallback.','Activity totals use separate adult, child and infant admission estimates from the daily plan.','Hotel estimate uses up to 2 adults and 1 child per room, with no more than 1 child assigned to a room; infants are assumed to share.','Food sums the timed per-person meal estimates for the whole itinerary; Budget/Mid-range/Luxury selection scales meal estimates using researched restaurant price ratios.','Infants are assumed to share a room; confirm each property’s child/infant occupancy and cot rules.'])));
   root.append(s);
  }
 }
