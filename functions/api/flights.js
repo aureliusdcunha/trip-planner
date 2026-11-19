@@ -5,13 +5,22 @@ const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:
 const clip=(v,n=120)=>String(v??"").trim().slice(0,n);
 const dateOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))&&Number.isFinite(Date.parse(v+"T00:00:00Z"));
 const CABINS=[{key:"economy",value:1,label:"Economy"},{key:"premium_economy",value:2,label:"Premium Economy"},{key:"business",value:3,label:"Business"},{key:"first",value:4,label:"First Class"}];
+function quotaExceeded(message,status=0){
+ return status===429||/quota|limit (?:has been )?reached|monthly searches|searches (?:are )?exhausted|run out of searches|out of searches|no searches remaining/i.test(String(message||""));
+}
 async function serpSearch(params,key){
  const url=new URL("https://serpapi.com/search.json");
  for(const [k,v] of Object.entries({...params,api_key:key}))if(v!==undefined&&v!==null&&v!=="")url.searchParams.set(k,String(v));
  const response=await fetch(url,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(45000)});
  const body=await response.json().catch(()=>({}));
- if(!response.ok||body.error)throw new Error(body.error||"SerpApi request failed ("+response.status+").");
- if(body.search_metadata?.status==="Error")throw new Error(body.error||"Google Flights search returned an error.");
+ if(!response.ok||body.error){
+  const message=body.error||"SerpApi request failed ("+response.status+").";
+  const error=new Error(message);error.status=response.status;error.quotaExceeded=quotaExceeded(message,response.status);throw error;
+ }
+ if(body.search_metadata?.status==="Error"){
+  const message=body.error||"Google Flights search returned an error.";
+  const error=new Error(message);error.quotaExceeded=quotaExceeded(message);throw error;
+ }
  return body;
 }
 function formatTime(value){
@@ -96,6 +105,9 @@ export async function onRequestPost({request,env}){
   for(const result of settled){
    if(result.status==="fulfilled")options.push(...result.value);
    else errors.push(String(result.reason?.message||result.reason));
+  }
+  if(settled.some(result=>result.status==="rejected"&&result.reason?.quotaExceeded)||errors.some(message=>quotaExceeded(message))){
+   return json({code:"QUOTA_EXCEEDED",error:"SerpApi search quota or rate limit has been reached. TripPlanner should use its original itinerary flight estimates instead."},429);
   }
   if(!options.length)return json({error:errors[0]||"Google Flights did not return fares for this route and date. Try another date."},502);
   const seen=new Set(),unique=[];
