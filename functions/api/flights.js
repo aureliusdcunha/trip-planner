@@ -81,6 +81,19 @@ function mapFallback(x,segment,cabin,currency,source){
  const mins=Number(x.total_duration_minutes??x.total_duration??a.duration_minutes??a.duration);
  return {segment,airlines:airline,cabin_class:cabin,route,flight_number:legs.map(v=>v.flight_number).filter(Boolean).join(" + ")||x.flight_number||"",departure:formatTime(dep),arrival:formatTime(arr),duration:duration(mins),stops:String(x.stops??Math.max(0,legs.length-1)),layovers:(x.layovers||[]).map(v=>v.name||v.id||v).join(" · "),baggage:"",price_estimate:price,adult_price_per_person:price,child_price_per_person:price,infant_price_per_person:price*.1,provider_total_amount:price,provider_currency:x.currency||currency,price_unverified:false,live_fare:true,fare_notes:"Indicative provider fare for one adult, one-way. Child and lap-infant amounts are planning estimates.",source_url:"",price_source:source,price_checked_at:new Date().toISOString()};
 }
+
+function extractAirportCode(payload){
+ const d=payload.data??payload,items=[...(Array.isArray(d)?d:[]),...(d.airports||[]),...(d.suggestions||[]),...(d.results||[])];
+ for(const item of items){const nested=item.airports||[item];for(const a of (Array.isArray(nested)?nested:[nested])){const code=a.id||a.iata_code||a.code||a.airport_code;if(/^[A-Z]{3}$/i.test(String(code||"")))return String(code).toUpperCase()}}
+ return "";
+}
+async function resolveFallbackAirport(value,rapidKey,perceptKey){
+ const q=clip(value,100);if(/^[A-Z]{3}$/i.test(q))return q.toUpperCase();
+ if(rapidKey){try{const u=new URL("https://google-flights2.p.rapidapi.com/api/v1/searchAirport");u.searchParams.set("query",q);const j=await fallbackRequest(u,{"X-RapidAPI-Key":rapidKey,"X-RapidAPI-Host":"google-flights2.p.rapidapi.com"});const code=extractAirportCode(j);if(code)return code}catch{}}
+ if(perceptKey){try{const u=new URL("https://api.perceptlayer.com/v1/google-flights/autocomplete");u.searchParams.set("q",q);u.searchParams.set("hl","en");u.searchParams.set("gl","in");const j=await fallbackRequest(u,{"X-API-Key":perceptKey});const code=extractAirportCode(j);if(code)return code}catch{}}
+ throw Error("Could not resolve airport "+q+". Enter a three-letter IATA code such as BOM, DEL or SIN.");
+}
+
 async function runRapidFallback(key,from,to,b,currency){
  const rows=[];for(const c of CABINS)for(const l of [{segment:"outbound",from,to,date:b.departureDate},{segment:"return",from:to,to:from,date:b.returnDate}]){
   const u=new URL("https://google-flights2.p.rapidapi.com/api/v1/searchFlights");
@@ -117,7 +130,7 @@ export async function onRequestPost({request,env}){
     return json({configured:true,valid:true,provider:"SerpApi",plan:account.plan_name||"Plan",monthlyLimit:Number(account.searches_per_month)||0,used:Number(account.this_month_usage)||0,remaining:Number(account.plan_searches_left??account.total_searches_left)||0,hourlyLimit:Number(account.account_rate_limit_per_hour)||0,hourlyUsed:Number(account.this_hour_searches??account.last_hour_searches)||0,renewalDate:account.plan_renewal_date||null});
    }catch(error){return json({configured:true,valid:null,provider:"SerpApi",message:"Could not read account quota: "+(error.message||"network error")})}
   }
-  if(!key)return json({error:"Flight price search is not configured. Add SERPAPI_API_KEY as a Cloudflare Pages secret."},503);
+  if(!key&&!rapidKey&&!perceptKey)return json({error:"No flight providers are configured. Add the provider keys as Cloudflare Pages secrets."},503);
   if(action==="places"){
    const q=clip(b.query,80);if(q.length<2)return json({places:[]});
    const result=await serpSearch({engine:"google_flights_autocomplete",q,hl:"en",gl:"in",exclude_regions:"true"},key);
@@ -135,7 +148,7 @@ export async function onRequestPost({request,env}){
   if(!dateOk(b.departureDate)||!dateOk(b.returnDate)||b.returnDate<b.departureDate)return json({error:"Enter valid outbound and return dates."},400);
   const currency=clip(b.currency,3).toUpperCase()||"INR";
   let from,to;
-  try{const resolved=await Promise.all([resolveAirport(b.origin,key),resolveAirport(b.destination,key)]);from=typeof resolved[0]==="string"?resolved[0]:resolved[0].id;to=typeof resolved[1]==="string"?resolved[1]:resolved[1].id;}
+  try{const resolve=async value=>{if(key){try{const r=await resolveAirport(value,key);return typeof r==="string"?r:r.id}catch{}}return resolveFallbackAirport(value,rapidKey,perceptKey)};const resolved=await Promise.all([resolve(b.origin),resolve(b.destination)]);from=resolved[0];to=resolved[1];}
   catch(error){return json({error:error.message||"Could not resolve the departure and destination airports."},422)}
   if(from===to)return json({error:"Origin and destination resolve to the same airport."},400);
   if(!/^[A-Z]{3}$/.test(currency))return json({error:"Choose a valid trip currency."},400);
