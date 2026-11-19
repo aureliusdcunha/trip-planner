@@ -6,7 +6,7 @@
 .report-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 8px;padding:12px 16px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 2px 8px var(--shadow)}
 .report-controls label{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .report-controls select{width:auto;min-width:150px;padding:8px 12px;border-color:var(--gold);font-weight:700}
-.report-controls span{font-size:11px;color:var(--muted)}
+.report-controls span{font-size:11px;color:var(--muted)}.budget-style-select{width:auto;min-width:112px;padding:6px 9px;border:1px solid var(--gold);border-radius:8px;background:#fff;color:var(--ink);font-weight:700;font-size:12px}.budget-table td .budget-style-select{margin-left:10px;vertical-align:middle}
 .card.selected-budget{border:2px solid var(--gold);background:#fffaf0;box-shadow:0 2px 12px rgba(201,168,76,.15)}
 .city-block{margin:20px 0 26px}
 .city-header{display:flex;align-items:center;gap:14px;padding:16px 20px;margin-bottom:12px;background:linear-gradient(135deg,var(--ink) 0%,#3D2010 100%);border-radius:12px;position:relative;overflow:hidden;color:#fff}
@@ -52,7 +52,7 @@
 <label class="field span-3">Departing from<input id="from" value="Mumbai" maxlength="60"></label><label class="field span-4">Interests / requirements<input id="int" maxlength="250" placeholder="culture, beaches, food, family-friendly, shopping, relaxed pace"></label>
 <div class="field wide checkbox-grid"><label class="research-toggle"><span><input id="includeShopping" type="checkbox" checked> Include shopping recommendations and shopping stops</span><small>Include a shopping guide and shopping windows in the itinerary.</small></label><label class="research-toggle"><span><input id="zeroDaysWasted" type="checkbox"> 0 days wasted — make arrival and departure days useful</span><small>Plan realistic activities around flight and transfer times instead of treating either day as lost.</small></label><label class="research-toggle"><span><input id="webResearch" type="checkbox"> Use Google Search for each specialist researcher</span><small>Optional live web grounding; may incur API charges on a billing-enabled Gemini project.</small></label></div>
 <div class="field wide"><div class="form-actions"><button class="btn" id="generate" type="submit">Create detailed travel report</button><button class="btn secondary" id="sample" type="button">Try a sample destination</button><span class="muted">For planning estimates only. Live prices and availability are not guaranteed.</span></div></div></form><div id="formTools" class="form-tools hidden"><div id="formSummary" class="form-summary"></div><button class="btn secondary" id="toggleForm" type="button">Edit trip details</button></div></section>
-<div id="status" class="status" aria-live="polite"></div><div id="report" class="hidden"><header class="hero"><div class="eyebrow">Your personalised journey</div><h2 id="heroTitle"></h2><p id="heroIntro"></p></header><div id="stats" class="stats"></div><div id="reportControls" class="report-controls"><label for="budgetView">Budget style for this report</label><select id="budgetView"><option>Budget</option><option>Mid-range</option><option>Luxury</option></select><span>Switching this updates the hotel tier, dining estimates and total below.</span></div><nav id="tabs" class="tabs" aria-label="Itinerary sections"></nav><div id="content"></div><p class="footer">This AI-generated plan is a research starting point. Confirm visa and entry requirements for your passport, provider terms, flight schedules, hotel availability, opening hours, local transport and prices before booking. Estimates may change with season, exchange rates and final party composition.</p></div>
+<div id="status" class="status" aria-live="polite"></div><div id="report" class="hidden"><header class="hero"><div class="eyebrow">Your personalised journey</div><h2 id="heroTitle"></h2><p id="heroIntro"></p></header><div id="stats" class="stats"></div><nav id="tabs" class="tabs" aria-label="Itinerary sections"></nav><div id="content"></div><p class="footer">This AI-generated plan is a research starting point. Confirm visa and entry requirements for your passport, provider terms, flight schedules, hotel availability, opening hours, local transport and prices before booking. Estimates may change with season, exchange rates and final party composition.</p></div>
 </main><script>
 (()=>{'use strict';
 const $=id=>document.getElementById(id);let trip=null,active='Overview';
@@ -69,6 +69,8 @@ const money=(v,code)=>{if(typeof v!=='number'||!Number.isFinite(v))return 'Not p
 function styleKey(style){return String(style||'Mid-range').toLowerCase().replace(/[^a-z]/g,'')}
 function hotelTierForStyle(style){const key=styleKey(style);return key==='budget'?'budget':key==='luxury'?'splurge':'midrange'}
 function tierForStyle(style){return styleKey(style)==='luxury'?'luxury':styleKey(style)==='budget'?'budget':'mid-range'}
+function stylePicker(value,onChange){const select=el('select','budget-style-select');['Budget','Mid-range','Luxury'].forEach(x=>{const option=el('option','',x);option.value=x;select.append(option)});select.value=value||'Mid-range';select.onchange=()=>onChange(select.value);return select}
+function styleControl(label,value,onChange,note){const wrap=el('div','report-controls');wrap.append(el('label','',label),stylePicker(value,onChange));if(note)wrap.append(el('span','',note));return wrap}
 function strategyForStyle(){const key=styleKey(trip.bud);return (trip.budget_strategies||[]).find(x=>styleKey(x.style)===key)||trip.budget_strategy||{}}
 function activityPartyCost(a){const adult=Number(a.adult_cost_estimate??a.cost_estimate)||0,child=Number(a.child_cost_estimate??a.cost_estimate??adult)||0,infant=Number(a.infant_cost_estimate)||0;return adult*(trip.adults||0)+child*(trip.children||0)+infant*(trip.infants||0)}
 function positiveNumber(value){const n=Number(value);return Number.isFinite(n)&&n>0?n:0}
@@ -97,7 +99,7 @@ function budgetCalc(){
  const flightChild=hasRoundTripOptions?flightFareForLeg(outbound,'child_price_per_person',1)+flightFareForLeg(returnFlight,'child_price_per_person',1):fallbackChild;
  const flightInfant=hasRoundTripOptions?flightFareForLeg(outbound,'infant_price_per_person',.1)+flightFareForLeg(returnFlight,'infant_price_per_person',.1):fallbackInfant;
  const flights=flightAdult*adults+flightChild*children+flightInfant*infants,local=positiveNumber(b.local_transport_total);
- const wantedTier=hotelTierForStyle(trip.bud);let hotel=0,hotelFound=false;
+ const wantedTier=hotelTierForStyle(trip.hotelStyle||trip.bud);let hotel=0,hotelFound=false;
  (trip.areas||[]).forEach(area=>{const areaNights=Number((String(area.nights||'').match(/\d+/)||[])[0])||0;const options=area.hotel_options||[];const option=options.find(h=>styleKey(h.tier)===wantedTier);if(option&&positiveNumber(option.price_per_night)>0){hotel+=positiveNumber(option.price_per_night)*rooms*areaNights;hotelFound=true}else hotel+=positiveNumber(b.hotel_per_room_per_night)*rooms*areaNights});
  if(!hotelFound)hotel=positiveNumber(b.hotel_per_room_per_night)*rooms*nights;
  const hasDailyActivities=(trip.days||[]).some(d=>(d.activities||[]).length>0),activitiesFromDays=(trip.days||[]).reduce((sum,d)=>sum+(d.activities||[]).reduce((x,a)=>x+activityPartyCost(a),0),0),activities=hasDailyActivities?activitiesFromDays:positiveNumber(b.activity_per_person_per_day)*days*(adults+children*.7+infants*.1);
@@ -105,15 +107,15 @@ function budgetCalc(){
  // When the report-level style changes, scale those prices by the researched dining-tier ratio.
  const allMeals=(trip.days||[]).flatMap(d=>(d.meals||[]).map(m=>({meal:m,base:d.base})));
  const hasCompleteMealPrices=allMeals.length>0&&allMeals.every(({meal:m})=>Number.isFinite(Number(m.adult_price_estimate??m.price_estimate))&&Number.isFinite(Number(m.child_price_estimate??m.price_estimate))&&Number.isFinite(Number(m.infant_price_estimate??0)));
- const generatedStyle=trip.generatedBudgetStyle||trip.bud,tier=tierForStyle(trip.bud);
+ const generatedStyle=trip.generatedBudgetStyle||trip.bud,tier=tierForStyle(trip.diningStyle||trip.bud);
  const scheduledFood=allMeals.reduce((sum,{meal:m,base})=>{
   const adult=Number(m.adult_price_estimate??m.price_estimate)||0;
   const childReported=Number(m.child_price_estimate??m.price_estimate??adult)||0,infantReported=Number(m.infant_price_estimate)||0;
   const child=Math.min(childReported,adult*.7),infant=Math.min(infantReported,adult*.1);
-  const initialRate=tierPartyMealRate(generatedStyle,base),selectedRate=tierPartyMealRate(trip.bud,base),styleScale=initialRate>0&&selectedRate>0?selectedRate/initialRate:1;
+  const initialRate=tierPartyMealRate(generatedStyle,base),selectedRate=tierPartyMealRate(trip.diningStyle||trip.bud,base),styleScale=initialRate>0&&selectedRate>0?selectedRate/initialRate:1;
   return sum+(adult*adults+child*children+infant*infants)*styleScale;
  },0);
- const fallbackDiningFood=(trip.days||[]).reduce((sum,d)=>sum+Math.max(2,(d.meals||[]).length)*tierPartyMealRate(trip.bud,d.base),0);
+ const fallbackDiningFood=(trip.days||[]).reduce((sum,d)=>sum+Math.max(2,(d.meals||[]).length)*tierPartyMealRate(trip.diningStyle||trip.bud,d.base),0);
  const fallbackFood=positiveNumber(b.food_per_person_per_day)*days*(adults+children*.7+infants*.1);
  const food=hasCompleteMealPrices?scheduledFood:(fallbackDiningFood>0?fallbackDiningFood:fallbackFood);
  const shopping=trip.includeShopping===false?0:positiveNumber(b.shopping_per_person)*(adults+children);
@@ -121,9 +123,9 @@ function budgetCalc(){
  const factor=1+contingencyPercent/100,sharedPerTraveller=(local+hotel+activities+food+shopping)*factor/pax,perAdult=flightAdult*factor+sharedPerTraveller,perChild=flightChild*factor+sharedPerTraveller,perInfant=flightInfant*factor+sharedPerTraveller;
  return {code,pax,adults,children,infants,rooms,nights,flights,flightAdult,flightChild,flightInfant,flightSource:hasRoundTripOptions?'Outbound + return flight options':'Budget researcher fallback',perAdult,perChild,perInfant,local,hotel,activities,food,foodSource:hasCompleteMealPrices?'Timed itinerary meals':fallbackDiningFood>0?'Selected dining tier':'Daily food allowance',shopping,contingency,total,rate,home:rate>0?total*rate:null,per:total/pax,tier,hasRoundTripOptions};
 }
-function render(){ $('report').classList.remove('hidden');$('heroTitle').textContent=$('dest').value+' · '+$('d1').value+' to '+$('d2').value;const homeCurrency=trip.budget.home_currency||$('cur').value;$('heroIntro').textContent=trip.overview+' · All prices in '+homeCurrency+' first; local amounts in brackets.';$('budgetView').value=trip.bud||'Mid-range';const c=budgetCalc();const partyLabel=c.adults+' adults · '+c.children+' children · '+c.infants+' infants';const stats=[[trip.days.length+' days','Trip duration'],[trip.areas.length+' bases','Suggested bases'],[c.pax+' travellers',partyLabel],[fmt(trip.destination_currency)+' ('+trip.currency_code+')','Local currency'],[money(c.total,c.code),'Estimated total · '+(trip.budget.home_currency||$('cur').value)]];$('stats').replaceChildren(...stats.map(([v,k])=>{const x=el('div','stat');add(x,el('b','',v),el('span','',k));return x}));const visibleSections=[...baseSections.slice(0,6),...(trip.includeShopping!==false?['Shopping guide']:[]),...baseSections.slice(6)];if(active==='Shopping guide'&&!visibleSections.includes(active))active='Overview';$('tabs').replaceChildren(...visibleSections.map(t=>{const b=el('button','tab'+(active===t?' active':''),t);b.type='button';b.onclick=()=>{active=t;render()};return b}));renderContent()}
+function render(){ $('report').classList.remove('hidden');$('heroTitle').textContent=$('dest').value+' · '+$('d1').value+' to '+$('d2').value;const homeCurrency=trip.budget.home_currency||$('cur').value;$('heroIntro').textContent=trip.overview+' · All prices in '+homeCurrency+' first; local amounts in brackets.';const c=budgetCalc();const partyLabel=c.adults+' adults · '+c.children+' children · '+c.infants+' infants';const stats=[[trip.days.length+' days','Trip duration'],[trip.areas.length+' bases','Suggested bases'],[c.pax+' travellers',partyLabel],[fmt(trip.destination_currency)+' ('+trip.currency_code+')','Local currency'],[money(c.total,c.code),'Estimated total · '+(trip.budget.home_currency||$('cur').value)]];$('stats').replaceChildren(...stats.map(([v,k])=>{const x=el('div','stat');add(x,el('b','',v),el('span','',k));return x}));const visibleSections=[...baseSections.slice(0,6),...(trip.includeShopping!==false?['Shopping guide']:[]),...baseSections.slice(6)];if(active==='Shopping guide'&&!visibleSections.includes(active))active='Overview';$('tabs').replaceChildren(...visibleSections.map(t=>{const b=el('button','tab'+(active===t?' active':''),t);b.type='button';b.onclick=()=>{active=t;render()};return b}));renderContent()}
 function renderContent(){
- const root=$('content');root.replaceChildren();let s,g;const selectedStrategy=strategyForStyle();
+ const root=$('content');root.replaceChildren();let s,g;
  const home=trip.budget.home_currency||$('cur').value,local=trip.currency_code||trip.budget.currency;
  const heading=(title,sub)=>section(title,sub);
  if(active==='Overview'){
@@ -131,7 +133,7 @@ function renderContent(){
   g=el('div','grid');
   [['Best time to visit',trip.best_time],['Destination context',trip.local_context],['Getting there',trip.getting_there],['Route and overnight bases',trip.areas.map(x=>x.name+' ('+x.nights+')').join(' → ')],['Home currency',home+' · local prices shown in brackets as '+local],['Estimated trip budget',money(budgetCalc().total,local)]].forEach(x=>g.append(card(x[0],x[1])));
   s.append(g);
-  if(selectedStrategy&&Object.keys(selectedStrategy).length){s.append(el('h3','','Smart mix · '+trip.bud));const mix=el('div','grid');[['Flights',selectedStrategy.flights],['Hotels',selectedStrategy.hotels],['Food',selectedStrategy.food],['Experiences',selectedStrategy.experiences],['Transport',selectedStrategy.transport]].forEach(x=>mix.append(card(x[0],x[1])));s.append(mix)}
+  
   (trip.caveats||[]).forEach(x=>s.append(el('div','warn','Note: '+x)));
   root.append(s);
  }
@@ -157,8 +159,12 @@ function renderContent(){
   g=el('div','grid');trip.internal_transport.forEach(x=>g.append(card(x.mode+' · '+x.route,x.pros,[x.duration,x.booking_advice].filter(Boolean).join(' · '),money(x.price_estimate,local),x.booking_url)));s.append(g);root.append(s);
  }
  if(active==='Hotels'){
-  const wantedHotelTier=hotelTierForStyle(trip.bud);
-  const selectedHotelLabel=trip.bud==='Luxury'?'Splurge':trip.bud;
+  const hotelStyle=trip.hotelStyle||trip.bud||'Mid-range';
+  const wantedHotelTier=hotelTierForStyle(hotelStyle);
+  const selectedHotelLabel=hotelStyle==='Luxury'?'Splurge':hotelStyle;
+  s=heading('Accommodation preferences','Choose the accommodation tier independently of dining and other trip costs.');
+  s.append(styleControl('Hotel tier',hotelStyle,value=>{trip.hotelStyle=value;render()},'Updates accommodation options and the budget total.'));
+  root.append(s);
   trip.areas.forEach(a=>{
    s=heading(a.name+' · '+a.nights,'Showing only the '+selectedHotelLabel+' property. Confirm family/triple-room configuration directly before booking.');
    g=el('div','grid');
@@ -195,9 +201,12 @@ function renderContent(){
   s.append(el('h3','','Experience notes'));s.append(g);root.append(s);
  }
  if(active==='Dining'){
-  const wantedDiningTier=styleKey(tierForStyle(trip.bud));
+  const diningStyle=trip.diningStyle||trip.bud||'Mid-range';
+  const wantedDiningTier=styleKey(tierForStyle(diningStyle));
   const diningOptions=(trip.dining||[]).filter(x=>styleKey(x.tier)===wantedDiningTier);
-  s=heading('Food and dining ideas · '+trip.bud,'Showing only dining options in the selected '+trip.bud.toLowerCase()+' tier.');
+  s=heading('Food and dining ideas · '+diningStyle,'Showing only dining options in the selected '+diningStyle.toLowerCase()+' tier.');
+  s.append(styleControl('Dining tier',diningStyle,value=>{trip.diningStyle=value;render()},'Updates meal estimates and the food budget independently.'));
+
   g=el('div','grid');
   if(!diningOptions.length)g.append(card('No matching dining options returned','No restaurants were returned for this budget tier. Regenerate the report to research matching dining choices.'));
   diningOptions.forEach(x=>g.append(card(x.name,x.why_visit,[x.tier,x.area,x.cuisine,x.signature,x.meal_type].filter(Boolean).join(' · '),money(Number(x.adult_price_per_person??x.price_per_person),local)+' / adult',x.booking_url)));
@@ -241,12 +250,20 @@ function renderContent(){
   root.append(s);
  }
  if(active==='Budget'){
-  s=heading('Smart mix budget · '+trip.bud,'The selector above updates accommodation and dining tiers, then recalculates the whole-party estimate. Airfare and activity admission estimates remain route/venue-based.');
+  s=heading('Trip budget','Choose accommodation and dining tiers independently below. Every change recalculates the whole-party estimate immediately.');
   const b=trip.budget,c=budgetCalc();
-  if(selectedStrategy&&Object.keys(selectedStrategy).length){g=el('div','grid');[['Flights',selectedStrategy.flights],['Hotels',selectedStrategy.hotels],['Food',selectedStrategy.food],['Experiences',selectedStrategy.experiences],['Transport',selectedStrategy.transport]].forEach(x=>g.append(card(x[0],x[1])));s.append(g)}
+  
   const table=el('table','budget-table');
   [['Category','Estimate']].forEach(row=>{const tr=el('tr');row.forEach(x=>tr.append(el('th','',x)));table.append(tr)});
-  [['International flights · whole party, round trip',money(c.flights,c.code)],['Local transport',money(c.local,c.code)],['Accommodation · '+trip.bud+' tier ('+c.rooms+' rooms × '+c.nights+' nights)',money(c.hotel,c.code)],['Activities & tickets',money(c.activities,c.code)],['Food & dining · '+c.foodSource.toLowerCase(),money(c.food,c.code)],...(trip.includeShopping!==false?[['Shopping & miscellaneous',money(c.shopping,c.code)]]:[]),['Contingency ('+(b.contingency_percent||0)+'%)',money(c.contingency,c.code)],['Estimated total',money(c.total,c.code)]].forEach(x=>{const tr=el('tr'),emphasize=x[0]==='Estimated total';const a=el('td',emphasize?'budget-total':'',x[0]),v=el('td',emphasize?'budget-total':'',x[1]);add(tr,a,v);table.append(tr)});
+  const addBudgetRow=(label,value,emphasize=false,control=null)=>{const tr=el('tr'),a=el('td',emphasize?'budget-total':'',label),v=el('td',emphasize?'budget-total':'',value);if(control)a.append(control);add(tr,a,v);table.append(tr)};
+  addBudgetRow('International flights · whole party, round trip',money(c.flights,c.code));
+  addBudgetRow('Local transport',money(c.local,c.code));
+  addBudgetRow('Accommodation · '+(trip.hotelStyle||trip.bud)+' tier ('+c.rooms+' rooms × '+c.nights+' nights)',money(c.hotel,c.code),false,stylePicker(trip.hotelStyle||trip.bud,value=>{trip.hotelStyle=value;render()}));
+  addBudgetRow('Activities & tickets',money(c.activities,c.code));
+  addBudgetRow('Food & dining · '+c.foodSource.toLowerCase(),money(c.food,c.code),false,stylePicker(trip.diningStyle||trip.bud,value=>{trip.diningStyle=value;render()}));
+  if(trip.includeShopping!==false)addBudgetRow('Shopping & miscellaneous',money(c.shopping,c.code));
+  addBudgetRow('Contingency ('+(b.contingency_percent||0)+'%)',money(c.contingency,c.code));
+  addBudgetRow('Estimated total',money(c.total,c.code),true);
   s.append(table);
   const flightRates=[c.adults+' adults × '+money(c.flightAdult,c.code),...(c.children?[c.children+' children × '+money(c.flightChild,c.code)]:[]),...(c.infants?[c.infants+' infants × '+money(c.flightInfant,c.code)]:[])].join(' · ');
   s.append(el('p','muted','Round-trip airfare per traveller: '+flightRates+' · Whole-party flight subtotal: '+money(c.flights,c.code)+'. '+(c.hasRoundTripOptions?'Calculated from the outbound and return one-way cards; Alternative fares are not added.':'Flight cards did not contain both legs, so the budget researcher round-trip fare is used as a fallback.')));
@@ -263,7 +280,7 @@ function renderContent(){
   root.append(s);
  }
 }
-function updateFormSummary(){const ages=$('children').value+' children, '+$('infants').value+' infants';$('formSummary').replaceChildren(document.createTextNode($('dest').value+' · '+$('d1').value+' to '+$('d2').value+' · '+$('adults').value+' adults, '+ages+' · '+$('budgetView').value+' budget'),document.createElement('br'));const note=document.createElement('small');note.textContent='Shopping '+($('includeShopping').checked?'included':'excluded')+' · '+$('cur').value+' estimates';$('formSummary').append(note)}
+function updateFormSummary(){const ages=$('children').value+' children, '+$('infants').value+' infants';$('formSummary').replaceChildren(document.createTextNode($('dest').value+' · '+$('d1').value+' to '+$('d2').value+' · '+$('adults').value+' adults, '+ages+' · '+$('bud').value+' budget'),document.createElement('br'));const note=document.createElement('small');note.textContent='Shopping '+($('includeShopping').checked?'included':'excluded')+' · '+$('cur').value+' estimates';$('formSummary').append(note)}
 function collapseTripForm(collapsed){const box=$('tripFormBox');box.classList.toggle('collapsed',collapsed);$('tripForm').classList.toggle('hidden',collapsed);$('formTools').classList.toggle('hidden',!collapsed);if(collapsed)updateFormSummary();$('wrap').classList.toggle('has-report',!!trip)}
 $('toggleForm').onclick=()=>collapseTripForm(!$('tripForm').classList.contains('hidden'));
 ['dest','d1','d2','adults','children','infants','bud','cur','includeShopping'].forEach(id=>$(id).addEventListener('change',()=>{if($('tripForm').classList.contains('hidden'))updateFormSummary()}));
@@ -274,7 +291,7 @@ $('d1').addEventListener('change',()=>{const departure=$('d1').value;if(!departu
 $('d2').addEventListener('change',()=>{const departure=$('d1').value;if(!$('d2').value||$('d2').value<departure)$('d2').value=addIsoDays(departure,1);$('d2').min=departure;});
 function syncParty(changed){let adults=Math.max(1,Math.min(12,Number($('adults').value)||1)),children=Math.max(0,Math.min(12,Number($('children').value)||0)),infants=Math.max(0,Math.min(adults,Number($('infants').value)||0));if(adults+children+infants>12){if(changed==='adults'){children=Math.max(0,12-adults-infants)}else if(changed==='infants'){infants=Math.max(0,Math.min(adults,12-adults-children))}else{children=Math.max(0,12-adults-infants)}}$('adults').value=adults;$('children').value=children;$('infants').value=infants;const total=adults+children+infants;$('paxSummary').textContent=String(total);$('adults').max=12-children-infants;$('children').max=12-adults-infants;$('infants').max=Math.min(adults,12-adults-children);if(changed==='children')$('childAges').placeholder='Enter '+children+' child age(s), e.g. 5, 9';}
 ['adults','children','infants'].forEach(id=>$(id).addEventListener('input',()=>syncParty(id)));
-$('budgetView').addEventListener('change',()=>{if(!trip)return;trip.bud=$('budgetView').value;render()});
+
 $('sample').onclick=()=>{$('dest').value='Thailand: Bangkok, Chiang Mai, Phuket and Krabi';$('int').value='temples, beaches, local food, culture and relaxed family-friendly activities';$('d2').value=addIsoDays($('d1').value,9);$('d2').min=$('d1').value};
 async function requestItinerary(payload){
  const r=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
@@ -327,7 +344,7 @@ $('tripForm').onsubmit=async ev=>{
   const required=['flight_options','internal_transport','areas','highlights','dining','days','tips','caveats'];
   const dates=Array.from({length:n},(_,i)=>new Date(Date.parse(d1+'T00:00:00Z')+i*864e5).toISOString().slice(0,10));
   if(required.some(k=>!Array.isArray(parsed[k]))||parsed.days.length!==n||!parsed.budget||!parsed.practical||parsed.days.some((d,i)=>d.date!==dates[i]||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2))throw Error('The completed itinerary did not pass final validation. Please retry.');
-  trip=parsed;trip.pax=pax;trip.adults=adults;trip.children=children;trip.infants=infants;trip.childAges=childAges;trip.includeShopping=input.includeShopping;trip.zeroDaysWasted=input.zeroDaysWasted;trip.bud=input.bud;trip.generatedBudgetStyle=input.bud;active='Overview';$('status').textContent='';render();collapseTripForm(true);
+  trip=parsed;trip.pax=pax;trip.adults=adults;trip.children=children;trip.infants=infants;trip.childAges=childAges;trip.includeShopping=input.includeShopping;trip.zeroDaysWasted=input.zeroDaysWasted;trip.bud=input.bud;trip.generatedBudgetStyle=input.bud;trip.hotelStyle=input.bud;trip.diningStyle=input.bud;active='Overview';$('status').textContent='';render();collapseTripForm(true);
  }catch(e){$('status').textContent='Could not complete itinerary: '+(e.message||'Please retry.')}
  finally{$('generate').disabled=false}
 };
