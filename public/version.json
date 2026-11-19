@@ -1,5 +1,5 @@
 {
-  "version": "1.2.2",
+  "version": "1.2.3",
   "released": "2026-11-19",
-  "releaseName": "Filter report options to the selected budget style"
+  "releaseName": "Derived traveller summary, aligned destination dates and checkbox row"
 }
