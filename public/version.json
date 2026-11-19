@@ -1,5 +1,5 @@
 {
-  "version": "1.2.8",
+  "version": "1.2.9",
   "released": "2026-11-19",
-  "releaseName": "Flight fare currency and scale validation"
+  "releaseName": "Reject implausible economy flight fares and exclude them from budgets"
 }
