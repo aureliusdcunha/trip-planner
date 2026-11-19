@@ -76,7 +76,7 @@ function extractJsonText(value){
 function validateAgent(kind,data,ctx){
  if(!data||typeof data!=="object")return "The "+kind+" researcher returned no structured result.";
  if(kind==="route"&&(!Array.isArray(data.areas)||!data.areas.length))return "The route researcher did not identify overnight bases.";
- if(kind==="flights"&&(!Array.isArray(data.flight_options)||data.flight_options.length<3))return "The flight researcher must return at least two suggested flight options.";
+ if(kind==="flights"&&(!Array.isArray(data.flight_options)||data.flight_options.length<3))return "The flight researcher must return at least three suggested flight options.";
  if(kind==="stay"){
   if(!Array.isArray(data.hotel_options)||data.hotel_options.length<3)return "The accommodation researcher must return budget, mid-range and splurge hotel options.";
   const tiers=new Set(data.hotel_options.map(x=>String(x.tier||"").toLowerCase()));
