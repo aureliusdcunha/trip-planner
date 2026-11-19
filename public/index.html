@@ -163,14 +163,24 @@ function renderContent(){
    trip.flightSearch={originText:originField.field.value,destinationText:destinationField.field.value};
    try{
     const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromCode,destination:toCode,departureDate:departField.field.value,returnDate:returnField.field.value,currency:local})});
-    const data=await r.json();if(!r.ok)throw new Error(data.error||'Live flight search failed.');
-    trip.liveFlightOptions=data.options||[];trip.liveFlightSearchAt=data.searchedAt;trip.liveFlightSearchNotice=data.notice;
-    const start=trip.flight_options.length;trip.flight_options.push(...trip.liveFlightOptions);trip.liveSelectedFlights={};
+    const data=await r.json();
+    if(!r.ok){
+     if(data.code==='QUOTA_EXCEEDED'||r.status===429){
+      trip.flightFallbackMode=true;trip.liveSelectedFlights={};
+      const fallbackCount=(trip.flight_options||[]).filter(f=>!f.live_fare&&positiveNumber(f.price_estimate)>0).length;
+      trip.liveFlightStatus='SerpApi free search quota reached. Automatically using the original TripPlanner flight research estimates'+(fallbackCount?' ('+fallbackCount+' options available).':'.')+' These are indicative estimates, not live fares.';
+      liveStatus.textContent=trip.liveFlightStatus;renderContent();return;
+     }
+     throw new Error(data.error||'Flight price search failed.');
+    }
+    trip.flightFallbackMode=false;
+    trip.liveFlightOptions=data.options||[];trip.liveFlightSearchAt=data.searchedAt;trip.liveFlightSearchNotice=data.notice;trip.liveSelectedFlights={};
+    const start=trip.flight_options.length;trip.flight_options.push(...trip.liveFlightOptions);
     trip.liveFlightOptions=trip.liveFlightOptions.map((f,i)=>({...f,_tripIndex:start+i}));
     trip.liveFlightStatus='Found '+trip.liveFlightOptions.length+' indicative flight prices from Google Flights · '+(data.searchesUsed||8)+' searches used. '+(data.partial?'Some cabin/direction searches returned no results. ':'')+'Prices may change.';
     liveStatus.textContent=trip.liveFlightStatus;
     renderContent();
-   }catch(error){liveStatus.textContent=error.message||'Could not retrieve live fares.';trip.liveFlightStatus=liveStatus.textContent}
+   }catch(error){liveStatus.textContent=error.message||'Could not retrieve flight prices.';trip.liveFlightStatus=liveStatus.textContent}
    finally{searchButton.disabled=false}
   };
   panel.append(originField.wrap,destinationField.wrap,departField.wrap,returnField.wrap,searchButton,liveStatus);
@@ -187,7 +197,7 @@ function renderContent(){
   stopsSelect.value=trip.flightFilters?.stops||trip.requestedStops||'Any';
   stopsSelect.onchange=()=>{trip.flightFilters=trip.flightFilters||{};trip.flightFilters.stops=stopsSelect.value;renderContent()};
   stops.append(stopsSelect);filters.append(cabin,stops);s.append(filters);root.append(s);
-  const options=(trip.flight_options||[]).map((f,index)=>({...f,_index:index}));
+  const options=(trip.flight_options||[]).map((f,index)=>({...f,_index:index})).filter(f=>!trip.flightFallbackMode||!f.live_fare);
   const cabinMatch=f=>{const wanted=trip.flightFilters?.cabin||'Any';return wanted==='Any'||String(f.cabin_class||'').toLowerCase().includes(wanted.toLowerCase())};
   const stopCount=f=>{const value=String(f.stops||'').toLowerCase();if(/non.?stop|direct/.test(value))return 0;const m=value.match(/(\d+)/);return m?Number(m[1]):null};
   const stopMatch=f=>{const wanted=trip.flightFilters?.stops||'Any';if(wanted==='Any')return true;const count=stopCount(f);if(count===null)return false;return wanted==='3'?count>=3:count===Number(wanted)};
