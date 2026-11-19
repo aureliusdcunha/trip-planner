@@ -150,10 +150,10 @@ function renderContent(){
   const destinationField=makePlace('To',trip.flightSearch?.destinationText||(trip.dest||'').split(/[,:;]/)[0]||'','live-flight-destination');
   const dateField=(label,value)=>{const wrap=el('label','live-flight-field',label),field=el('input');field.type='date';field.value=value;wrap.append(field);return {wrap,field}};
   const departField=dateField('Departure',trip.d1),returnField=dateField('Return',trip.d2);
-  const lookup=(field,list)=>{let timer;field.addEventListener('input',()=>{clearTimeout(timer);const q=field.value.trim();if(q.length<2)return;timer=setTimeout(async()=>{try{const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'places',query:q})});const data=await r.json();list.replaceChildren(...(data.places||[]).map(place=>{const option=el('option');option.value=place.label;return option}))}catch{}},350)})};
+  const lookup=(field,list)=>{let timer;field.addEventListener('input',()=>{clearTimeout(timer);const q=field.value.trim();if(q.length<3)return;timer=setTimeout(async()=>{try{const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'places',query:q})});const data=await r.json();list.replaceChildren(...(data.places||[]).map(place=>{const option=el('option');option.value=place.label;return option}))}catch{}},600)})};
   lookup(originField.field,originField.list);lookup(destinationField.field,destinationField.list);
-  const searchButton=el('button','btn','Search live fares');searchButton.type='button';
-  const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'Search once to retrieve outbound and return prices across Economy, Premium Economy, Business and First Class. Stop filters are applied locally and do not trigger more API searches.');
+  const searchButton=el('button','btn','Search flight prices');searchButton.type='button';
+  const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'One search uses up to 8 SerpApi searches (4 cabin classes × outbound and return). The free plan currently includes 250 searches/month; airport suggestions may also use searches.'];
   searchButton.onclick=async()=>{
    const code=value=>{const match=String(value||'').match(/\(([A-Z]{3})\)\s*$/);return match?match[1]:/^[A-Z]{3}$/.test(String(value||'').trim())?String(value).trim().toUpperCase():''};
    const fromCode=code(originField.field.value),toCode=code(destinationField.field.value);
@@ -197,10 +197,10 @@ function renderContent(){
    const block=heading(label,segment==='alternative'?'Alternative routes are not added to the round-trip budget.':'Select the option that best suits your schedule and budget.');
    const grid=el('div','grid');
    list.forEach(f=>{
-    const meta=[f.cabin_class||'Cabin not specified',f.route,f.flight_number?'Flight '+f.flight_number:'',f.departure,f.arrival,f.duration,'Stops: '+(f.stops??'Not specified'),f.baggage].filter(Boolean).join(' · ');
+    const meta=[f.cabin_class||'Cabin not specified',f.route,f.flight_number?'Flight '+f.flight_number:'',f.departure,f.arrival,f.duration,'Stops: '+(f.stops??'Not specified'),f.layovers?'Layover: '+f.layovers:'',f.baggage].filter(Boolean).join(' · ');
     const desc=[f.fare_notes,f.live_fare?'Price source: Google Flights via SerpApi · indicative only. No booking is available in TripPlanner.':f.booking_advice].filter(Boolean).join(' ');
     const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / '+(f.live_fare?'adult':'passenger')+' · one-way':'Fare unavailable · verify with airline';
-    const c=card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,fareLabel,f.booking_url);
+    const c=card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,fareLabel,f.live_fare?f.source_url:f.booking_url);
     if((segment==='outbound'||segment==='return')&&!f.price_unverified&&positiveNumber(f.price_estimate)>0){
      const chosen=trip.selectedFlights?.[segment]===f._index||trip.liveSelectedFlights?.[segment]===f._index;
      const button=el('button','btn'+(chosen?'':' secondary'),chosen?'Selected for '+segment:'Select this flight');
