@@ -155,7 +155,7 @@ function renderContent(){
   const searchButton=el('button','btn','Search live fares');searchButton.type='button';
   const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'Search live fares to compare real airline offers across cabin classes and up to 2 stops.');
   searchButton.onclick=async()=>{
-   const code=value=>{const match=String(value||'').match(/\\(([A-Z]{3})\\)\\s*$/);return match?match[1]:/^[A-Z]{3}$/.test(String(value||'').trim())?String(value).trim().toUpperCase():''};
+   const code=value=>{const match=String(value||'').match(/\(([A-Z]{3})\)\s*$/);return match?match[1]:/^[A-Z]{3}$/.test(String(value||'').trim())?String(value).trim().toUpperCase():''};
    const fromCode=code(originField.field.value),toCode=code(destinationField.field.value);
    if(!fromCode||!toCode){liveStatus.textContent='Choose a city/airport suggestion from the dropdown so its IATA code is included (for example Mumbai (BOM)).';return}
    if(!departField.field.value||!returnField.field.value||returnField.field.value<departField.field.value){liveStatus.textContent='Enter valid departure and return dates.';return}
