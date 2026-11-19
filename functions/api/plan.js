@@ -356,6 +356,7 @@ export async function onRequestPost({request,env}){
       const openingResults=openingRuns.map(x=>x.value);
       const route=openingResults.find(x=>x.kind==="route");
       const areas=normaliseAreas(route.data.areas,dayCount-1,maxBases);
+      const fxRatePromise=getExchangeRate(route.data.currency_code,trip.cur);
       emit({type:"stage",stage:"research",message:"Route confirmed. Launching area-specific stay, attraction, dining and local transport researchers.",agentTotal:areas.length*3+1});
       const tasks=[];
       areas.forEach((area,index)=>{
@@ -390,6 +391,25 @@ export async function onRequestPost({request,env}){
       };
       const guide=specialistResults.find(x=>x.kind==="guide")?.data;
       if(!guide)throw new Error("The practical guide and budget specialist did not complete.");
+      const localCurrency=String(route.data.currency_code||guide.budget.currency||"").toUpperCase();
+      const homeCurrency=String(trip.cur||"INR").toUpperCase();
+      const fxRate=await fxRatePromise;
+      guide.budget.currency=localCurrency;
+      guide.budget.home_currency=homeCurrency;
+      if(localCurrency===homeCurrency){
+       guide.budget.exchange_rate_to_home=1;
+       guide.budget.exchange_rate_date="";
+       guide.budget.exchange_rate_source="Same currency";
+      }else if(fxRate){
+       guide.budget.exchange_rate_to_home=fxRate.rate;
+       guide.budget.exchange_rate_date=fxRate.date;
+       guide.budget.exchange_rate_source=fxRate.source;
+      }else{
+       guide.budget.exchange_rate_to_home=Number(guide.budget.exchange_rate_to_home)>0?guide.budget.exchange_rate_to_home:0;
+       guide.budget.exchange_rate_source=guide.budget.exchange_rate_to_home>0?"Model-estimated reference rate":"Unavailable";
+       guide.budget.exchange_rate_date="";
+       guide.caveats.push("The reference FX service was unavailable. Home-currency amounts use the model's indicative rate where available; verify the exchange rate before booking.");
+      }
       Object.assign(combined,guide);
       const schedule=makeBaseSchedule(areas,dayCount);
       const dayDates=Array.from({length:dayCount},(_,i)=>new Date(Date.parse(d1+"T00:00:00Z")+i*864e5).toISOString().slice(0,10));
@@ -412,10 +432,10 @@ export async function onRequestPost({request,env}){
       combined.research_sources=sourceUnique(allResearch.flatMap(x=>x.sources||[])).map(s=>({...s,agent:allResearch.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
       const modelsUsed=Array.from(new Set([route.model,...specialistResults.map(x=>x.model),...dayResults.map(x=>x.model)].filter(Boolean)));
       combined.research={search_requested:useSearch,search_enabled:useSearch&&!(modelState.freeTier&&modelState.switched),search_disabled_for_free_tier_fallback:modelState.freeTier&&modelState.switched&&useSearch,primary_model:modelState.primary,fallback_models:modelState.models.slice(1),model_fallback_used:modelState.switched,model_used:modelsUsed.length===1?modelsUsed[0]:modelsUsed.join(", "),models_used:modelsUsed,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
-      const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats"];
+      const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats","shopping_guide"];
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
       if(combined.areas.some(a=>!Array.isArray(a.hotel_options)||!a.hotel_options.length))throw new Error("At least one stay researcher did not return suitable hotel options.");
-      if(combined.days.some((d,i)=>d.date!==dayDates[i]||!Array.isArray(d.activities)||d.activities.length<2||!Array.isArray(d.meals)))throw new Error("One or more day planners returned an incomplete daily plan.");
+      if(combined.days.some((d,i)=>d.date!==dayDates[i]||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2))throw new Error("One or more day planners returned an incomplete daily plan.");
       emit({type:"result",data:combined});
      }catch(err){
       console.error("Trip Planner agent orchestration failed:",err?.stack||err);
