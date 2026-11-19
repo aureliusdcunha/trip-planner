@@ -10,18 +10,32 @@ const obj=(properties,required=Object.keys(properties))=>({type:"object",propert
 const arr=items=>({type:"array",items});
 const schemas={
  route:obj({overview:str,best_time:str,destination_currency:str,currency_code:str,local_context:str,route_summary:str,areas:arr(obj({name:str,nights:str,why:str}))}),
- flights:obj({getting_there:str,flight_options:arr(obj({route:str,airlines:str,duration:str,price_estimate:num,booking_advice:str}))}),
- transport:obj({internal_transport:arr(obj({mode:str,route:str,duration:str,price_estimate:num,pros:str,booking_advice:str}))}),
- stay:obj({hotel_options:arr(obj({tier:str,name:str,location:str,price_per_night:num,room_notes:str,why:str,booking_url:str}))}),
- attractions:obj({highlights:arr(obj({name:str,area:str,category:str,duration:str,price_estimate:num,why_visit:str,practical_tip:str,booking_url:str}))}),
- dining:obj({dining:arr(obj({name:str,area:str,cuisine:str,signature:str,price_per_person:num,why_visit:str}))}),
+ flights:obj({getting_there:str,flight_options:arr(obj({segment:str,route:str,airlines:str,flight_number:str,departure:str,arrival:str,duration:str,stops:str,price_estimate:num,baggage:str,fare_notes:str,booking_advice:str,booking_url:str}))}),
+ transport:obj({internal_transport:arr(obj({mode:str,route:str,duration:str,price_estimate:num,pros:str,booking_advice:str,booking_url:str}))}),
+ stay:obj({hotel_options:arr(obj({tier:str,name:str,location:str,stars:str,price_per_night:num,room_notes:str,facilities:str,family_fit:str,airport_transfer:str,why:str,booking_url:str}))}),
+ attractions:obj({highlights:arr(obj({name:str,area:str,category:str,duration:str,price_estimate:num,child_price_estimate:num,family_price_estimate:num,why_visit:str,practical_tip:str,family_fit:str,booking_url:str}))}),
+ dining:obj({dining:arr(obj({name:str,area:str,cuisine:str,signature:str,price_per_person:num,meal_type:str,why_visit:str,booking_url:str}))}),
  guide:obj({
   practical:obj({entry_requirements:str,visa:str,weather:str,connectivity:str,health_safety:str,money:str,local_etiquette:str,packing:str}),
   budget:obj({currency:str,home_currency:str,exchange_rate_to_home:num,international_flight_per_person:num,local_transport_total:num,hotel_per_room_per_night:num,activity_per_person_per_day:num,food_per_person_per_day:num,shopping_per_person:num,contingency_percent:num,assumptions:arr(str)}),
+  budget_strategy:obj({flights:str,hotels:str,food:str,experiences:str,transport:str}),
+  shopping_guide:arr(obj({area:str,item:str,category:str,price_estimate:num,tip:str})),
   tips:arr(str),caveats:arr(str)
  }),
  day:obj({days:arr(obj({date:str,base:str,title:str,pace:str,activities:arr(obj({time:str,name:str,category:str,description:str,duration:str,transport:str,cost_estimate:num,booking_url:str,child_friendly:str})),meals:arr(obj({meal:str,suggestion:str,price_estimate:num})),overnight:str,day_estimate:num}))})
 };
+async function getExchangeRate(base,quote){
+ const from=String(base||"").toUpperCase(),to=String(quote||"").toUpperCase();
+ if(!/^[A-Z]{3}$/.test(from)||!/^[A-Z]{3}$/.test(to))return null;
+ if(from===to)return {rate:1,date:"",source:"Same currency"};
+ try{
+  const response=await fetch("https://api.frankfurter.dev/v2/rate/"+from.toLowerCase()+"/"+to.toLowerCase(),{method:"GET",headers:{"accept":"application/json"},signal:AbortSignal.timeout(7000)});
+  if(!response.ok)return null;
+  const data=await response.json();
+  if(data?.base!==from||data?.quote!==to||!Number.isFinite(data.rate)||data.rate<=0)return null;
+  return {rate:data.rate,date:String(data.date||""),source:"Frankfurter reference rates"};
+ }catch{return null}
+}
 function validDate(s){if(!DATE.test(s))return false;const d=new Date(s+"T00:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s}
 function nightsOf(v){const m=String(v??"").match(/\d+/);return m?Math.max(0,Number(m[0])):0}
 function normaliseAreas(areas,tripNights,maxBases){
@@ -62,18 +76,24 @@ function extractJsonText(value){
 function validateAgent(kind,data,ctx){
  if(!data||typeof data!=="object")return "The "+kind+" researcher returned no structured result.";
  if(kind==="route"&&(!Array.isArray(data.areas)||!data.areas.length))return "The route researcher did not identify overnight bases.";
- if(kind==="flights"&&(!Array.isArray(data.flight_options)||!data.flight_options.length))return "The flight researcher returned no usable route options.";
+ if(kind==="flights"&&(!Array.isArray(data.flight_options)||data.flight_options.length<3))return "The flight researcher must return at least three suggested flight options.";
+ if(kind==="stay"){
+  if(!Array.isArray(data.hotel_options)||data.hotel_options.length<3)return "The accommodation researcher must return budget, mid-range and splurge hotel options.";
+  const tiers=new Set(data.hotel_options.map(x=>String(x.tier||"").toLowerCase()));
+  if(!["budget","mid","splurge"].every(x=>[...tiers].some(t=>t.includes(x))))return "The accommodation researcher must cover budget, mid-range and splurge tiers.";
+ }
  if(kind==="transport"&&(!Array.isArray(data.internal_transport)||!data.internal_transport.length))return "The transport researcher returned no usable transfer options.";
- if(kind==="stay"&&(!Array.isArray(data.hotel_options)||!data.hotel_options.length))return "The accommodation researcher returned no hotel options.";
- if(kind==="attractions"&&(!Array.isArray(data.highlights)||!data.highlights.length))return "The attraction researcher returned no experiences.";
- if(kind==="dining"&&(!Array.isArray(data.dining)||!data.dining.length))return "The dining researcher returned no recommendations.";
+
+ if(kind==="attractions"&&(!Array.isArray(data.highlights)||data.highlights.length<5))return "The attractions researcher must return at least five distinct experiences.";
+ if(kind==="dining"&&(!Array.isArray(data.dining)||data.dining.length<4))return "The dining researcher must return at least four distinct options.";
  if(kind==="guide"){
   const keys=["exchange_rate_to_home","international_flight_per_person","local_transport_total","hotel_per_room_per_night","activity_per_person_per_day","food_per_person_per_day","shopping_per_person","contingency_percent"];
-  if(!data.practical||!data.budget||keys.some(k=>!Number.isFinite(data.budget[k])||data.budget[k]<0)||!Array.isArray(data.tips)||!Array.isArray(data.caveats))return "The practical/budget researcher returned incomplete data.";
+  if(!data.practical||!data.budget||keys.some(k=>!Number.isFinite(data.budget[k])||data.budget[k]<0)||!Array.isArray(data.tips)||!Array.isArray(data.caveats)||!data.budget_strategy||!Array.isArray(data.shopping_guide))return "The practical/budget researcher returned incomplete data.";
+  if(String(data.budget.currency||"").toUpperCase()!==String(ctx.trip.cur||"").toUpperCase()&&data.budget.exchange_rate_to_home<=0)return "The budget researcher must provide a positive indicative home-currency conversion rate as a fallback.";
  }
  if(kind==="day"){
   if(!Array.isArray(data.days)||data.days.length!==1)return "The day planner must return exactly one day.";
-  const d=data.days[0];if(d.date!==ctx.date||!Array.isArray(d.activities)||d.activities.length<2||!Array.isArray(d.meals))return "The daily plan is missing activities, meals or the requested date.";
+  const d=data.days[0];if(d.date!==ctx.date||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2)return "The daily plan needs at least three activities, two meals and the requested date.";
  }
  return null;
 }
@@ -81,17 +101,17 @@ function promptFor(kind,ctx){
  const t=ctx.trip;
  const party="Travellers: "+t.pax+" total ("+t.adults+" adults, "+(t.pax-t.adults)+" children). Budget style: "+t.bud+". Departing from: "+t.from+". Home currency: "+t.cur+". Interests: "+(t.int||"balanced sightseeing, food and culture")+".";
  const searchInstruction=ctx.useSearch?"You have Google Search available. Actively run at least one focused search for this exact assignment and ground recommendations in the returned sources; do not rely only on model memory. Prefer official or reputable primary sources.":"Live Google Search was not enabled. Use established knowledge and label prices, schedules and availability as indicative; do not imply you checked live sources.";
- const common="Destination: "+t.dest+". Dates: "+t.d1+" to "+t.d2+" inclusive. "+party+" "+searchInstruction+" Use accurate real places. Do not invent live availability, exact fares, flight schedules or opening hours. All prices must be numeric estimates in destination local currency. Prefer official tourism, attraction, hotel, transport and venue sources. If uncertain, say so rather than inventing.";
- if(kind==="route")return "You are the ROUTE ARCHITECT for a travel-planning team. Your only task is choosing sensible overnight bases and the route between them. "+common+" Return "+ctx.maxBases+" or fewer bases. The number of nights must add up to exactly "+ctx.nights+"; for a day trip, return one base with 0 nights. Avoid unnecessary backtracking and group geographically. For each base return its name, nights as e.g. '3 nights', and a short reason. Also return overview, best_time, destination_currency, currency_code, local_context and route_summary. Do not return hotels, activities, meals, flights or budget. Keep concise.";
- if(kind==="flights")return "You are the FLIGHT SPECIALIST. Research only inbound/outbound route options. "+common+" From "+t.from+" to "+t.dest+". Return 2-3 plausible airline/route options, typical journey duration, indicative round-trip fare per traveller in destination currency, and booking advice. Do not invent flight numbers or exact schedules. Include getting_there as a concise arrival/departure note. No hotels or day plans.";
+ const common="Destination: "+t.dest+". Dates: "+t.d1+" to "+t.d2+" inclusive. "+party+" "+searchInstruction+" Use accurate real places. Do not invent live availability, exact fares, flight schedules or opening hours. All numeric price fields must be in destination local currency (ISO code). Never embed currency amounts or currency symbols in narrative text fields; put all prices only in numeric price fields so the application can convert and display them consistently in the traveller's home currency with local currency in brackets. If uncertain, say so rather than inventing.";
+ if(kind==="route")return "You are the ROUTE ARCHITECT for a travel-planning team. Your only task is choosing sensible overnight bases and the route between them. "+common+" Return "+ctx.maxBases+" or fewer bases. The number of nights must add up to exactly "+ctx.nights+"; for a day trip, return one base with 0 nights. Avoid unnecessary backtracking and group geographically. For each base return its name, nights as e.g. '3 nights', and a short reason. Also return overview, best_time, destination_currency, currency_code, local_context and route_summary. currency_code must be the ISO 4217 three-letter currency code for the destination local currency (for example THB, JPY, EUR). Do not return hotels, activities, meals, flights or budget. Keep concise.";
+ if(kind==="flights")return "You are the FLIGHT SPECIALIST. Research international flight recommendations from "+t.from+" to "+t.dest+" and return. "+common+" Return at least 3 comparison-ready options: at least one outbound, one return, and a best-value or alternative fare option. Each option must include segment (Outbound, Return or Alternative), route, airlines, flight_number (leave blank unless verified), departure airport/time (write indicative if not verified), arrival airport/time, duration, number of stops, numeric one-way fare estimate per traveller, baggage allowance, fare_notes, booking_advice and booking_url. Prefer sensible family itineraries, convenient airport pairings and no unnecessary overnight layovers. If the route is multi-city, include relevant open-jaw or internal flight legs as separate options. Never invent exact flight numbers or times; leave them blank when not verified. Do not claim seats are available. Include getting_there as a concise arrival/departure strategy. No hotels or day plans.";
  if(kind==="transport")return "You are the LOCAL TRANSPORT SPECIALIST. Research only realistic transfer options for this route. "+common+" Route bases: "+ctx.areas.map(a=>a.name+" ("+a.nights+")").join(" → ")+". Return 2-4 useful transfers including mode, route, indicative total or route fare in destination currency, duration and pros. Do not add daily attractions or flights.";
- if(kind==="stay")return "You are the ACCOMMODATION SPECIALIST for "+ctx.area.name+". Research lodging for this base only. "+common+" Suggested stay: "+ctx.area.nights+". Party composition: "+t.pax+" travellers, "+t.adults+" adults and "+(t.pax-t.adults)+" children. Return 2-3 distinct hotel options appropriate to the budget style, with actual property names, neighbourhood, indicative nightly room price in local currency, room notes and why suitable. Include booking_url only if the search confirms an official hotel or trusted booking page; otherwise empty string. Never claim rooms are available. Do not research other bases.";
- if(kind==="attractions")return "You are the ATTRACTIONS SPECIALIST for "+ctx.area.name+". Research only real attractions, cultural experiences and activities in or near this base. "+common+" Return 3-5 high-value options with area, category, visit duration, numeric per-person price (0 for free), why visit, practical tip and official booking_url only when verified. Tailor family suitability to children if present. No hotels, dining or day-by-day schedule.";
- if(kind==="dining")return "You are the DINING SPECIALIST for "+ctx.area.name+". Research only restaurants, food markets, signature local dishes and authentic dining experiences in or near this base. "+common+" Return 2-3 specific real options with cuisine, signature, indicative price per person in destination currency and why visit. Avoid inventing addresses or reservation links. Do not plan activities or hotels.";
- if(kind==="guide")return "You are the TRAVEL PRACTICALITIES AND BUDGET SPECIALIST. Research passport-dependent entry guidance, weather for travel dates, connectivity, health/safety, money, etiquette and packing. "+common+" Home currency is "+t.cur+". Return a complete practical guide. For numeric budget: international_flight_per_person = round-trip fare per traveller; local_transport_total = whole-party transport total; hotel_per_room_per_night = typical nightly rate for this budget tier; activity_per_person_per_day and food_per_person_per_day = per-person daily averages; shopping_per_person = per-person whole-trip allowance; contingency_percent 10-20; exchange_rate_to_home = units of home currency for one destination currency unit if reasonably known, else 0. Provide 5-7 tips and 2-4 caveats. Do not calculate a grand total. Never assert visa eligibility without nationality.";
+ if(kind==="stay")return "You are the ACCOMMODATION SPECIALIST for "+ctx.area.name+". Research lodging for this base only. "+common+" Suggested stay: "+ctx.area.nights+". Party composition: "+t.pax+" travellers, "+t.adults+" adults and "+(t.pax-t.adults)+" children. Return exactly 3 specific real hotel properties, one in each tier: Budget, Mid-range and Splurge. Do not return generic descriptions in place of property names. For each include tier, name, location/neighbourhood, star category if known, indicative price per room per night in destination local currency, family room/triple-room notes, facilities (pool, breakfast, shuttle, kids amenities when verified), family_fit, airport_transfer and why it fits this trip. Include booking_url only if a trusted official property or booking page is known. Do not claim rooms are available. Do not research other bases.";
+ if(kind==="attractions")return "You are the ATTRACTIONS SPECIALIST for "+ctx.area.name+". Research only real attractions, cultural experiences and activities in or near this base. "+common+" Return 5-8 high-value, distinct experiences suitable for the dates and interests. Each must include area, category, duration, numeric adult price per person, numeric child price per child, numeric family total for this party where possible, why visit, practical tip, family_fit and official booking_url only when verified. Use 0 for free activities. State age restrictions and booking lead time when relevant, but do not invent either. No hotels, dining or day-by-day schedule.";
+ if(kind==="dining")return "You are the DINING SPECIALIST for "+ctx.area.name+". Research restaurants, food markets, local signature dishes and authentic dining experiences in or near this base. "+common+" Return 4-6 specific, diverse and family-appropriate options. Include area, cuisine, signature dish, type of meal (street food, food court, casual, special dinner, etc.), indicative price per person in destination local currency, why visit, and a reservation/official URL only when verified. Include one special-occasion choice and affordable everyday options. Do not plan activities or hotels.";
+ if(kind==="guide")return "You are the TRAVEL PRACTICALITIES, SHOPPING AND BUDGET SPECIALIST. Research passport-dependent entry guidance, weather for travel dates, connectivity, health/safety, money, etiquette, packing and worthwhile shopping areas/items. "+common+" The traveller home currency is exactly "+t.cur+". In budget.home_currency, return exactly "+t.cur+". budget.currency must be the destination local currency ISO code. The application will override exchange_rate_to_home with a daily reference FX rate when available, but still provide a positive indicative fallback rate (home currency units for one local currency unit) in case the reference-rate service is unavailable. For numeric budget: international_flight_per_person = round-trip fare per traveller in local currency; local_transport_total = whole-party transport total; hotel_per_room_per_night = typical nightly rate for the selected family room; activity_per_person_per_day and food_per_person_per_day = per-person daily averages; shopping_per_person = per-person whole-trip allowance; contingency_percent 10-20. Return budget_strategy guidance for flights, hotels, food, experiences and transport, with a splurge/save mix appropriate to the requested budget. Return 5-8 shopping_guide items with area, item, category, local price estimate (numeric) and a useful tip. Provide 5-7 family-aware tips and 2-4 caveats. Do not calculate a grand total. Never assert visa eligibility without nationality.";
  if(kind==="day"){
   const list=ctx.highlights.length?ctx.highlights.map(h=>h.name+" — "+h.why_visit).join("; "):"Choose well-known, relevant local experiences.";
-  return "You are the DAY PLANNER. Create exactly one realistic day for "+ctx.date+" in "+ctx.base+". "+common+" Day number "+ctx.dayNumber+" of "+t.days+"; "+(ctx.dayNumber===1?"arrival day: keep the schedule light and allow airport transfer.":ctx.dayNumber===t.days?"departure day: leave time for check-out and airport transfer.":"normal sightseeing day.")+" Use these researched attractions as candidate choices: "+list+". Route context: "+ctx.areas.map(a=>a.name+" ("+a.nights+")").join(" → ")+". Return exactly one day object with date, base, title, pace, two or three sensible activities, two or three meal suggestions with numeric per-person prices, overnight and day_estimate. Include activity time, duration, transport, numeric per-person cost, description, booking_url only if verified, and child_friendly note. Do not invent extra bases. Keep text concise.";
+  return "You are the DAY PLANNER. Create exactly one realistic, detailed family day for "+ctx.date+" in "+ctx.base+". "+common+" Day number "+ctx.dayNumber+" of "+t.days+"; "+(ctx.dayNumber===1?"arrival day: respect arrival/airport transfer and avoid an exhausting schedule.":ctx.dayNumber===t.days?"departure day: allow time for check-out, baggage and airport transfer.":"normal sightseeing day with realistic opening hours and travel time.")+" Use these researched attractions as candidate choices: "+list+". Route context: "+ctx.areas.map(a=>a.name+" ("+a.nights+")").join(" → ")+". Return exactly one day with a clear title, pace, 3-5 geographically sensible activities in chronological order, 2-3 meal suggestions, overnight base and whole-party day_estimate. Each activity must include a realistic time slot, duration, transport, numeric per-person local cost, useful practical description, booking_url only if verified and a specific family/child note. Group nearby places, include travel/transfer time, leave breaks and do not overfill the day. Do not invent extra bases or currency amounts in text. Keep text concise but actionable.";
  }
  return "";
 }
@@ -337,6 +357,7 @@ export async function onRequestPost({request,env}){
       const openingResults=openingRuns.map(x=>x.value);
       const route=openingResults.find(x=>x.kind==="route");
       const areas=normaliseAreas(route.data.areas,dayCount-1,maxBases);
+      const fxRatePromise=getExchangeRate(route.data.currency_code,trip.cur);
       emit({type:"stage",stage:"research",message:"Route confirmed. Launching area-specific stay, attraction, dining and local transport researchers.",agentTotal:areas.length*3+1});
       const tasks=[];
       areas.forEach((area,index)=>{
@@ -371,6 +392,25 @@ export async function onRequestPost({request,env}){
       };
       const guide=specialistResults.find(x=>x.kind==="guide")?.data;
       if(!guide)throw new Error("The practical guide and budget specialist did not complete.");
+      const localCurrency=String(route.data.currency_code||guide.budget.currency||"").toUpperCase();
+      const homeCurrency=String(trip.cur||"INR").toUpperCase();
+      const fxRate=await fxRatePromise;
+      guide.budget.currency=localCurrency;
+      guide.budget.home_currency=homeCurrency;
+      if(localCurrency===homeCurrency){
+       guide.budget.exchange_rate_to_home=1;
+       guide.budget.exchange_rate_date="";
+       guide.budget.exchange_rate_source="Same currency";
+      }else if(fxRate){
+       guide.budget.exchange_rate_to_home=fxRate.rate;
+       guide.budget.exchange_rate_date=fxRate.date;
+       guide.budget.exchange_rate_source=fxRate.source;
+      }else{
+       guide.budget.exchange_rate_to_home=Number(guide.budget.exchange_rate_to_home)>0?guide.budget.exchange_rate_to_home:0;
+       guide.budget.exchange_rate_source=guide.budget.exchange_rate_to_home>0?"Model-estimated reference rate":"Unavailable";
+       guide.budget.exchange_rate_date="";
+       guide.caveats.push("The reference FX service was unavailable. Home-currency amounts use the model's indicative rate where available; verify the exchange rate before booking.");
+      }
       Object.assign(combined,guide);
       const schedule=makeBaseSchedule(areas,dayCount);
       const dayDates=Array.from({length:dayCount},(_,i)=>new Date(Date.parse(d1+"T00:00:00Z")+i*864e5).toISOString().slice(0,10));
@@ -393,10 +433,10 @@ export async function onRequestPost({request,env}){
       combined.research_sources=sourceUnique(allResearch.flatMap(x=>x.sources||[])).map(s=>({...s,agent:allResearch.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
       const modelsUsed=Array.from(new Set([route.model,...specialistResults.map(x=>x.model),...dayResults.map(x=>x.model)].filter(Boolean)));
       combined.research={search_requested:useSearch,search_enabled:useSearch&&!(modelState.freeTier&&modelState.switched),search_disabled_for_free_tier_fallback:modelState.freeTier&&modelState.switched&&useSearch,primary_model:modelState.primary,fallback_models:modelState.models.slice(1),model_fallback_used:modelState.switched,model_used:modelsUsed.length===1?modelsUsed[0]:modelsUsed.join(", "),models_used:modelsUsed,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
-      const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats"];
+      const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats","shopping_guide"];
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
       if(combined.areas.some(a=>!Array.isArray(a.hotel_options)||!a.hotel_options.length))throw new Error("At least one stay researcher did not return suitable hotel options.");
-      if(combined.days.some((d,i)=>d.date!==dayDates[i]||!Array.isArray(d.activities)||d.activities.length<2||!Array.isArray(d.meals)))throw new Error("One or more day planners returned an incomplete daily plan.");
+      if(combined.days.some((d,i)=>d.date!==dayDates[i]||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2))throw new Error("One or more day planners returned an incomplete daily plan.");
       emit({type:"result",data:combined});
      }catch(err){
       console.error("Trip Planner agent orchestration failed:",err?.stack||err);

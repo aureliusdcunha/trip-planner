@@ -15,7 +15,7 @@
 </main><script>
 (()=>{'use strict';
 const $=id=>document.getElementById(id);let trip=null,active='Overview';
-const sections=['Overview','Flights','Route & transport','Hotels','Experiences','Dining','Daily itinerary','Practical guide','Budget'];
+const sections=['Overview','Flights','Route & transport','Hotels','Experiences','Dining','Shopping guide','Daily itinerary','Practical guide','Budget'];
 const el=(tag,cls,txt)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(txt!==undefined)x.textContent=String(txt??'');return x};
 const add=(p,...xs)=>{xs.filter(Boolean).forEach(x=>p.append(x));return p};
 const safeLink=(url,label='Provider information')=>{if(!url||!/^https:\/\//i.test(url))return null;const a=el('a','link',label);a.href=url;a.target='_blank';a.rel='noopener noreferrer';return a};
@@ -23,19 +23,133 @@ const card=(title,desc,meta,price,url)=>{const c=el('article','card');add(c,el('
 const section=(title,sub)=>{const s=el('section','section');const h=el('div','section-head');add(h,el('h2','',title),sub?el('p','',sub):null);s.append(h);return s};
 const ul=items=>{const x=el('ul');(items||[]).forEach(v=>x.append(el('li','',v)));return x};
 const fmt=(v)=>v??'Not specified';
-const money=(v,code)=>{if(typeof v!=='number'||!Number.isFinite(v))return 'Not provided';try{return new Intl.NumberFormat(undefined,{style:'currency',currency:code||'USD',maximumFractionDigits:0}).format(v)}catch{return (code||'')+' '+Math.round(v).toLocaleString()}};
+const currencyFormat=(v,code)=>{try{return new Intl.NumberFormat('en-IN',{style:'currency',currency:code,maximumFractionDigits:0}).format(v)}catch{return code+' '+Math.round(v).toLocaleString()}};
+const money=(v,code)=>{if(typeof v!=='number'||!Number.isFinite(v))return 'Not provided';const localCode=String(code||trip?.currency_code||trip?.budget?.currency||'USD').toUpperCase(),homeCode=String(trip?.budget?.home_currency||$('cur').value||'INR').toUpperCase(),local=currencyFormat(v,localCode);if(localCode===homeCode)return local;const rate=Number(trip?.budget?.exchange_rate_to_home);if(!Number.isFinite(rate)||rate<=0)return homeCode+' conversion unavailable ('+local+')';return currencyFormat(v*rate,homeCode)+' ('+local+')'};
 function budgetCalc(){const b=trip.budget,pax=Number($('pax').value)||1,days=trip.days.length,nights=Math.max(0,days-1),rooms=Math.ceil(pax/2);const flights=(b.international_flight_per_person||0)*pax,local=b.local_transport_total||0,hotel=(b.hotel_per_room_per_night||0)*rooms*nights,activityDaily=trip.days.map(d=>d.activities.reduce((sum,a)=>sum+(Number(a.cost_estimate)||0),0)),activityFromPlan=activityDaily.reduce((sum,v)=>sum+v,0),activities=(activityFromPlan>0?activityFromPlan:(b.activity_per_person_per_day||0)*days)*pax,mealDaily=trip.days.map(d=>d.meals.reduce((sum,m)=>sum+(Number(m.price_estimate)||0),0)),mealFromPlan=mealDaily.reduce((sum,v)=>sum+v,0),food=(mealFromPlan>0?mealFromPlan:(b.food_per_person_per_day||0)*days)*pax,shopping=(b.shopping_per_person||0)*pax,base=flights+local+hotel+activities+food+shopping,contingency=base*Math.max(0,Math.min(30,b.contingency_percent||0))/100,total=base+contingency,rate=b.exchange_rate_to_home||0,code=trip.currency_code||b.currency||'USD';return {code,pax,rooms,nights,flights,local,hotel,activities,food,shopping,contingency,total,rate,home:rate>0?total*rate:null,per:total/pax}}
-function render(){ $('report').classList.remove('hidden');$('heroTitle').textContent=$('dest').value+' · '+$('d1').value+' to '+$('d2').value;$('heroIntro').textContent=trip.overview;const stats=[[trip.days.length+' days','Trip duration'],[trip.areas.length+' bases','Suggested bases'],[$('pax').value,'Travellers'],[fmt(trip.destination_currency),'Local currency'],[money(budgetCalc().total,budgetCalc().code),'Estimated total']];$('stats').replaceChildren(...stats.map(([v,k])=>{const x=el('div','stat');add(x,el('b','',v),el('span','',k));return x}));$('tabs').replaceChildren(...sections.map(t=>{const b=el('button','tab'+(active===t?' active':''),t);b.type='button';b.onclick=()=>{active=t;renderContent()};return b}));renderContent()}
-function renderContent(){const root=$('content');root.replaceChildren();let s,g;
-if(active==='Overview'){s=section('Journey overview',trip.route_summary);g=el('div','grid');[['Best time to visit',trip.best_time],['Destination context',trip.local_context],['Getting there',trip.getting_there],['Getting around',trip.areas.map(x=>x.name+' ('+x.nights+')').join(' → ') ]].forEach(x=>g.append(card(x[0],x[1])));s.append(g);(trip.caveats||[]).forEach(x=>s.append(el('div','warn','Note: '+x)));root.append(s)}
-if(active==='Flights'){s=section('Flight strategy','Indicative routes and fare ranges; not live schedules or quotes.');g=el('div','grid');trip.flight_options.forEach(f=>g.append(card(f.route,f.booking_advice,[f.airlines,f.duration].filter(Boolean).join(' · '),money(f.price_estimate,trip.currency_code))));s.append(g);root.append(s);const t=section('Arrival and departure guidance');t.append(el('p','',trip.getting_there));root.append(t)}
-if(active==='Route & transport'){s=section('Route and bases','Suggested overnight distribution.');g=el('div','grid');trip.areas.forEach(a=>g.append(card(a.name,a.why,a.nights+' · nights')));s.append(g);root.append(s);s=section('Moving between places');g=el('div','grid');trip.internal_transport.forEach(x=>g.append(card(x.mode+' · '+x.route,x.pros,x.duration,money(x.price_estimate,trip.currency_code))));s.append(g);root.append(s)}
-if(active==='Hotels'){trip.areas.forEach(a=>{s=section(a.name+' · '+a.nights,a.why);g=el('div','grid');a.hotel_options.forEach(h=>g.append(card(h.name,h.why,[h.tier,h.location,h.room_notes].filter(Boolean).join(' · '),money(h.price_per_night,trip.currency_code),h.booking_url)));s.append(g);root.append(s)})}
-if(active==='Experiences'){s=section('Signature experiences','Allow for travel time and check opening days before confirming.');g=el('div','grid');trip.highlights.forEach(x=>g.append(card(x.name,x.why_visit,[x.area,x.category,x.duration].filter(Boolean).join(' · '),money(x.price_estimate,trip.currency_code),x.booking_url)));s.append(g);root.append(s)}
-if(active==='Dining'){s=section('Food and dining ideas','Indicative meal costs per person.');g=el('div','grid');trip.dining.forEach(x=>g.append(card(x.name,x.why_visit,[x.area,x.cuisine,x.signature].filter(Boolean).join(' · '),money(x.price_per_person,trip.currency_code))));s.append(g);root.append(s)}
-if(active==='Daily itinerary'){s=section('Day-by-day plan','Open each day for activity timing, transport, meals and overnight details.');trip.days.forEach((d,i)=>{const box=el('details','day');if(i===0)box.open=true;const summary=el('summary','', 'Day '+(i+1)+' · '+d.date+' · '+d.title);box.append(summary);box.append(el('p','muted','Base: '+d.base+' · Pace: '+d.pace));d.activities.forEach(a=>{const row=el('div','activity');const detail=el('div');add(row,el('div','time',a.time),detail);detail.append(el('strong','',a.name));add(detail,el('div','muted',[a.category,a.duration].filter(Boolean).join(' · ')),el('p','',a.description),el('div','meta','Transport: '+fmt(a.transport)+' · Cost: '+money(a.cost_estimate,trip.currency_code)));if(a.child_friendly)detail.append(el('div','meta','Family note: '+a.child_friendly));const link=safeLink(a.booking_url,'Booking / official details');if(link)detail.append(link);box.append(row)});if(d.meals.length){box.append(el('h3','','Meal ideas'));const mealList=ul(d.meals.map(m=>m.meal+': '+m.suggestion+' ('+money(m.price_estimate,trip.currency_code)+')'));box.append(mealList)}add(box,el('p','muted','Overnight: '+d.overnight+' · Day estimate: '+d.day_estimate));s.append(box)});root.append(s)}
-if(active==='Practical guide'){s=section('Before you go','Entry rules depend on passport, trip purpose and current regulations.');const p=trip.practical;g=el('div','grid');[['Entry requirements',p.entry_requirements],['Visa',p.visa],['Weather',p.weather],['Connectivity',p.connectivity],['Health & safety',p.health_safety],['Money',p.money],['Local etiquette',p.local_etiquette],['Packing',p.packing]].forEach(x=>g.append(card(x[0],x[1])));s.append(g);s.append(el('h3','','Useful reminders'));s.append(ul(trip.tips));trip.caveats.forEach(x=>s.append(el('div','warn',x)));if(trip.research?.model_used){const fallbackNote=trip.research.model_fallback_used?'Primary model quota was reached; the planner switched automatically.':'';s.append(el('h3','','AI research engine'));s.append(card('Model used',trip.research.model_used+(fallbackNote?' · '+fallbackNote:'')));if(trip.research.search_disabled_for_free_tier_fallback)s.append(el('div','warn','Live Google Search was disabled after switching to the free-tier fallback model; its Free Tier does not support Google Search grounding.'))}if(Array.isArray(trip.research_sources)&&trip.research_sources.length){s.append(el('h3','','Research sources'));const sources=el('div','grid');trip.research_sources.slice(0,24).forEach(source=>{const c=card(source.title||'Research source','Found by '+(source.agent||'specialist researcher'));const link=safeLink(source.url,'Open source');if(link)c.append(link);sources.append(c)});s.append(sources)}else if(trip.research?.search_enabled)s.append(el('div','warn','Google Search was enabled, but no citation links were returned by the research provider.'));root.append(s)}
-if(active==='Budget'){s=section('Trip cost estimate','Whole-party planning estimate unless a line explicitly says otherwise.');const b=trip.budget,c=budgetCalc();const table=el('table','budget-table');[['International flights',money(c.flights,c.code)],['Local transport',money(c.local,c.code)],['Accommodation ('+c.rooms+' rooms × '+c.nights+' nights)',money(c.hotel,c.code)],['Activities & tickets',money(c.activities,c.code)],['Food & dining',money(c.food,c.code)],['Shopping & miscellaneous',money(c.shopping,c.code)],['Contingency ('+(b.contingency_percent||0)+'%)',money(c.contingency,c.code)],['Estimated total',money(c.total,c.code)],['Per person',money(c.per,c.code)]].forEach((x,i)=>{const tr=el('tr');const a=el('td',i>6?'budget-total':'',x[0]),v=el('td',i>6?'budget-total':'',x[1]);add(tr,a,v);table.append(tr)});s.append(table);s.append(el('p','muted','Calculated for '+c.pax+' travellers using '+c.rooms+' assumed double-occupancy rooms over '+c.nights+' nights. Currency: '+c.code+'.'));if(c.home!==null)s.append(el('p','price','Approx. '+money(c.home,b.home_currency)+' at modelled exchange rate '+c.rate+' '+b.home_currency+' per '+c.code+'.'));else s.append(el('p','warn','Home-currency conversion was not available; use the local-currency total.'));s.append(el('h3','','Calculation assumptions'));s.append(ul((b.assumptions||[]).concat(['Flight estimate is per traveller, round trip.','Daily activity and meal costs are summed from the itinerary where provided; otherwise the modelled daily averages are used.','Hotel estimate is per room per night; room count is estimated at one room per two travellers.','Activities and food are per traveller per day; actual choices and child pricing may change the total.'])));root.append(s)}
+function render(){ $('report').classList.remove('hidden');$('heroTitle').textContent=$('dest').value+' · '+$('d1').value+' to '+$('d2').value;const homeCurrency=trip.budget.home_currency||$('cur').value;$('heroIntro').textContent=trip.overview+' · All prices in '+homeCurrency+' first; local amounts in brackets.';const stats=[[trip.days.length+' days','Trip duration'],[trip.areas.length+' bases','Suggested bases'],[$('pax').value,'Travellers'],[fmt(trip.destination_currency)+' ('+trip.currency_code+')','Local currency'],[money(budgetCalc().total,budgetCalc().code),'Estimated total · '+(trip.budget.home_currency||$('cur').value)]];$('stats').replaceChildren(...stats.map(([v,k])=>{const x=el('div','stat');add(x,el('b','',v),el('span','',k));return x}));$('tabs').replaceChildren(...sections.map(t=>{const b=el('button','tab'+(active===t?' active':''),t);b.type='button';b.onclick=()=>{active=t;render()};return b}));renderContent()}
+function renderContent(){
+ const root=$('content');root.replaceChildren();let s,g;
+ const home=trip.budget.home_currency||$('cur').value,local=trip.currency_code||trip.budget.currency;
+ const heading=(title,sub)=>section(title,sub);
+ if(active==='Overview'){
+  s=heading('Journey overview',trip.route_summary);
+  g=el('div','grid');
+  [['Best time to visit',trip.best_time],['Destination context',trip.local_context],['Getting there',trip.getting_there],['Route and overnight bases',trip.areas.map(x=>x.name+' ('+x.nights+')').join(' → ')],['Home currency',home+' · local prices shown in brackets as '+local],['Estimated trip budget',money(budgetCalc().total,local)]].forEach(x=>g.append(card(x[0],x[1])));
+  s.append(g);
+  if(trip.budget_strategy){s.append(el('h3','','Smart mix at a glance'));const mix=el('div','grid');[['Flights',trip.budget_strategy.flights],['Hotels',trip.budget_strategy.hotels],['Food',trip.budget_strategy.food],['Experiences',trip.budget_strategy.experiences],['Transport',trip.budget_strategy.transport]].forEach(x=>mix.append(card(x[0],x[1])));s.append(mix)}
+  (trip.caveats||[]).forEach(x=>s.append(el('div','warn','Note: '+x)));
+  root.append(s);
+ }
+ if(active==='Flights'){
+  s=heading('Suggested international flights','Compare outbound, return and alternative routes. Fares are indicative, not live quotes.');
+  g=el('div','grid');
+  const order=['outbound','return','alternative','domestic'];
+  const flights=[...(trip.flight_options||[])].sort((a,b)=>order.indexOf(String(a.segment||'').toLowerCase())-order.indexOf(String(b.segment||'').toLowerCase()));
+  flights.forEach(f=>{
+   const meta=[f.segment,f.route,f.flight_number?'Flight '+f.flight_number:'',f.departure,f.arrival,f.duration,f.stops,f.baggage].filter(Boolean).join(' · ');
+   const desc=[f.fare_notes,f.booking_advice].filter(Boolean).join(' ');
+   g.append(card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,money(f.price_estimate,local),f.booking_url));
+  });
+  s.append(g);root.append(s);
+  const t=heading('Arrival and departure strategy','Allow for airport transfers, baggage, check-in and family connection time.');
+  t.append(el('p','',trip.getting_there));root.append(t);
+ }
+ if(active==='Route & transport'){
+  s=heading('Route and bases','Suggested overnight distribution, ordered to reduce unnecessary backtracking.');
+  g=el('div','grid');trip.areas.forEach(a=>g.append(card(a.name,a.why,a.nights+' · nights')));s.append(g);root.append(s);
+  s=heading('Moving between places','Compare transfer type, journey time and whole-party cost where available.');
+  g=el('div','grid');trip.internal_transport.forEach(x=>g.append(card(x.mode+' · '+x.route,x.pros,[x.duration,x.booking_advice].filter(Boolean).join(' · '),money(x.price_estimate,local),x.booking_url)));s.append(g);root.append(s);
+ }
+ if(active==='Hotels'){
+  trip.areas.forEach(a=>{
+   s=heading(a.name+' · '+a.nights,'Compare a budget, mid-range and splurge property. Confirm family/triple-room configuration directly before booking.');
+   g=el('div','grid');
+   const tiers=[...(a.hotel_options||[])].sort((x,y)=>{
+    const rank=v=>{const t=String(v||'').toLowerCase();return t.includes('budget')?0:t.includes('mid')?1:t.includes('splurge')?2:3};
+    return rank(x.tier)-rank(y.tier);
+   });
+   tiers.forEach(h=>{
+    const meta=[h.tier,h.stars,h.location,h.room_notes].filter(Boolean).join(' · ');
+    const desc=[h.why,h.facilities?'Facilities: '+h.facilities:'',h.family_fit?'Family fit: '+h.family_fit:'',h.airport_transfer?'Airport transfer: '+h.airport_transfer:''].filter(Boolean).join(' ');
+    g.append(card(h.name,desc,meta,money(h.price_per_night,local)+' / room / night',h.booking_url));
+   });
+   s.append(g);root.append(s);
+  });
+ }
+ if(active==='Experiences'){
+  s=heading('Activities, sightseeing and experiences','Adult, child and whole-party estimates are shown in '+home+' first; destination prices appear in brackets.');
+  const table=el('table','budget-table');
+  const header=el('tr');['Activity','Area · duration','Adult','Child','Family total'].forEach(x=>header.append(el('th','',x)));table.append(header);
+  const pax=Number($('pax').value)||1,adults=Number($('adults').value)||pax,children=Math.max(0,pax-adults);
+  trip.highlights.forEach(x=>{
+   const adult=Number(x.price_estimate)||0,child=Number(x.child_price_estimate)||adult;
+   const family=Number.isFinite(Number(x.family_price_estimate))?Number(x.family_price_estimate):adult*adults+child*children;
+   const tr=el('tr'),name=el('td'),area=el('td','', [x.area,x.category,x.duration].filter(Boolean).join(' · '));
+   name.append(el('strong','',x.name));
+   if(x.family_fit)name.append(el('div','meta',x.family_fit));
+   const link=safeLink(x.booking_url,'Details / booking');if(link)name.append(link);
+   [name,area,el('td','',money(adult,local)),el('td','',money(child,local)),el('td','',money(family,local))].forEach(td=>tr.append(td));
+   table.append(tr);
+  });
+  s.append(table);
+  g=el('div','grid');trip.highlights.forEach(x=>g.append(card(x.name,x.why_visit,[x.area,x.category,x.duration,x.practical_tip].filter(Boolean).join(' · '),money(x.price_estimate,local)+' / adult',x.booking_url)));
+  s.append(el('h3','','Experience notes'));s.append(g);root.append(s);
+ }
+ if(active==='Dining'){
+  s=heading('Food and dining ideas','Affordable everyday meals plus a few memorable local dining choices. Prices are indicative per person.');
+  g=el('div','grid');trip.dining.forEach(x=>g.append(card(x.name,x.why_visit,[x.area,x.cuisine,x.signature,x.meal_type].filter(Boolean).join(' · '),money(x.price_per_person,local)+' / person',x.booking_url)));s.append(g);root.append(s);
+ }
+ if(active==='Shopping guide'){
+  s=heading('Family shopping guide','Suggested markets, local products and useful shopping tips by area.');
+  g=el('div','grid');(trip.shopping_guide||[]).forEach(x=>g.append(card(x.item,x.tip,[x.area,x.category].filter(Boolean).join(' · '),money(x.price_estimate,local))));s.append(g);root.append(s);
+ }
+ if(active==='Daily itinerary'){
+  s=heading('Day-by-day family itinerary','Open each day for the activity sequence, timing, transport, food and overnight details.');
+  trip.days.forEach((d,i)=>{
+   const box=el('details','day');if(i===0)box.open=true;
+   const summary=el('summary','','Day '+(i+1)+' · '+d.date+' · '+d.title);box.append(summary);
+   box.append(el('p','muted','Base: '+d.base+' · Pace: '+d.pace));
+   d.activities.forEach(a=>{
+    const row=el('div','activity'),detail=el('div');
+    add(row,el('div','time',a.time),detail);
+    detail.append(el('strong','',a.name));
+    add(detail,el('div','muted',[a.category,a.duration].filter(Boolean).join(' · ')),el('p','',a.description),el('div','meta','Transport: '+fmt(a.transport)+' · Per person: '+money(a.cost_estimate,local)+' · Party estimate: '+money((Number(a.cost_estimate)||0)*(Number($('pax').value)||1),local)));
+    if(a.child_friendly)detail.append(el('div','meta','Family note: '+a.child_friendly));
+    const link=safeLink(a.booking_url,'Booking / official details');if(link)detail.append(link);
+    box.append(row);
+   });
+   if(d.meals.length){box.append(el('h3','','Meal ideas'));box.append(ul(d.meals.map(m=>m.meal+': '+m.suggestion+' ('+money(m.price_estimate,local)+' / person)')))}
+   add(box,el('p','muted','Overnight: '+d.overnight+' · Whole-party day estimate: '+money(d.day_estimate,local)));
+   s.append(box);
+  });
+  root.append(s);
+ }
+ if(active==='Practical guide'){
+  s=heading('Before you go','Passport-specific entry rules and provider terms must be checked before booking.');
+  const p=trip.practical;
+  g=el('div','grid');
+  [['Entry requirements',p.entry_requirements],['Visa',p.visa],['Weather',p.weather],['Connectivity',p.connectivity],['Health & safety',p.health_safety],['Money',p.money],['Local etiquette',p.local_etiquette],['Packing',p.packing]].forEach(x=>g.append(card(x[0],x[1])));
+  s.append(g);s.append(el('h3','','Family travel tips'));s.append(ul(trip.tips));
+  (trip.caveats||[]).forEach(x=>s.append(el('div','warn',x)));
+  if(trip.research?.model_used){s.append(el('h3','','AI research engine'));s.append(card('Models used',(trip.research.models_used||[trip.research.model_used]).join(', '),trip.research.model_fallback_used?'Automatic quota/capacity fallback was used.':'Primary model completed the run.'));if(trip.research.search_disabled_for_free_tier_fallback)s.append(el('div','warn','Live Google Search was disabled after switching to a fallback model on the Free Tier. Price and availability estimates are not live grounded quotes.'))}
+  if(Array.isArray(trip.research_sources)&&trip.research_sources.length){s.append(el('h3','','Research sources'));const sources=el('div','grid');trip.research_sources.slice(0,24).forEach(source=>{const x=card(source.title||'Research source','Found by '+(source.agent||'specialist researcher'));const link=safeLink(source.url,'Open source');if(link)x.append(link);sources.append(x)});s.append(sources)}
+  else if(trip.research?.search_enabled)s.append(el('div','warn','Google Search was enabled, but no citation links were returned by the research provider.'));
+  root.append(s);
+ }
+ if(active==='Budget'){
+  s=heading('Smart mix budget','Splurge where it matters; save on everyday food, transport and routine stays. All figures are converted to home currency with local amounts in brackets.');
+  const b=trip.budget,c=budgetCalc();
+  if(trip.budget_strategy){g=el('div','grid');[['Flights',trip.budget_strategy.flights],['Hotels',trip.budget_strategy.hotels],['Food',trip.budget_strategy.food],['Experiences',trip.budget_strategy.experiences],['Transport',trip.budget_strategy.transport]].forEach(x=>g.append(card(x[0],x[1])));s.append(g)}
+  const table=el('table','budget-table');
+  [['Category','Estimate']].forEach(row=>{const tr=el('tr');row.forEach(x=>tr.append(el('th','',x)));table.append(tr)});
+  [['International flights',money(c.flights,c.code)],['Local transport',money(c.local,c.code)],['Accommodation ('+c.rooms+' rooms × '+c.nights+' nights)',money(c.hotel,c.code)],['Activities & tickets',money(c.activities,c.code)],['Food & dining',money(c.food,c.code)],['Shopping & miscellaneous',money(c.shopping,c.code)],['Contingency ('+(b.contingency_percent||0)+'%)',money(c.contingency,c.code)],['Estimated total',money(c.total,c.code)],['Per person',money(c.per,c.code)]].forEach((x,i)=>{const tr=el('tr');const a=el('td',i>6?'budget-total':'',x[0]),v=el('td',i>6?'budget-total':'',x[1]);add(tr,a,v);table.append(tr)});
+  s.append(table);
+  s.append(el('p','muted','Calculated for '+c.pax+' travellers using '+c.rooms+' assumed double-occupancy rooms over '+c.nights+' nights. All estimates are displayed in '+(b.home_currency||$('cur').value)+' first, with '+c.code+' local amounts in brackets.'));
+  if(c.code!==b.home_currency){const rateText=Number(c.rate)>0?'1 '+c.code+' = '+Number(c.rate).toFixed(4)+' '+b.home_currency+' · '+(b.exchange_rate_source||'reference rate')+(b.exchange_rate_date?' · effective '+b.exchange_rate_date:''):'Reference rate unavailable';s.append(el(Number(c.rate)>0?'meta':'warn','',rateText))}
+  s.append(el('h3','','Calculation assumptions'));
+  s.append(ul((b.assumptions||[]).concat(['Flight estimate is per traveller, round trip.','Activity and meal totals use the itinerary entries where supplied; otherwise the researched daily averages are used.','Hotel estimate is per room per night; room count is estimated at one room per two travellers.','Child pricing and final room configuration must be confirmed with each provider.'])));
+  root.append(s);
+ }
 }
 function iso(d){return d.toISOString().slice(0,10)}const start=new Date();start.setDate(start.getDate()+30);const end=new Date(start);end.setDate(end.getDate()+9);$('d1').value=iso(start);$('d2').value=iso(end);
 $('pax').addEventListener('change',()=>{const p=Math.max(1,Math.min(12,Number($('pax').value)||1));$('pax').value=p;$('adults').max=p;if(Number($('adults').value)>p)$('adults').value=p});

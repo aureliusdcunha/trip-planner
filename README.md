@@ -42,6 +42,12 @@ Gemini Free Tier may return HTTP 429 for a per-minute request limit while the mo
 
 A shared request gate limits the planner to two in-flight Gemini requests and spaces request starts by at least 4.3 seconds (under 14 starts per minute). The UI displays the cooldown while researchers wait. A bounded request budget and overall plan deadline still apply; if provider capacity or quota remains unavailable after the allowed attempts, the plan reports that limitation.
 
+### Home-currency prices and report detail
+
+All model price fields are returned in destination-local currency. The Worker fetches a daily reference rate from Frankfurter's public API and pins the traveller's selected home currency onto the budget. The report displays home currency first and destination-local currency in brackets (for example, `₹2,350 (THB 1,000)`). If the reference-rate service is unavailable, the app uses the model-estimated rate when available and labels that fallback.
+
+The report follows the structure of the supplied static family itinerary reference: outbound/return flight recommendations, domestic connections where relevant, budget/mid-range/splurge hotel options for each base, family-oriented daily schedules, attraction price comparisons, dining ideas, shopping guide, practical family tips and a smart-mix budget strategy. Destination-specific properties and recommendations are researched per trip; static Thailand names or prices are not copied into other destinations.
+
 ## Project structure
 
 - `public/index.html`: browser interface, stream reader, report renderer and dynamic budget calculation
