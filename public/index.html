@@ -143,7 +143,8 @@ function renderContent(){
   flights.forEach(f=>{
    const meta=[f.segment,f.route,f.flight_number?'Flight '+f.flight_number:'',f.departure,f.arrival,f.duration,f.stops,f.baggage].filter(Boolean).join(' · ');
    const desc=[f.fare_notes,f.booking_advice].filter(Boolean).join(' ');
-   g.append(card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,money(f.price_estimate,local)+' / passenger · one-way',f.booking_url));
+   const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / passenger · one-way':'Indicative fare unavailable · verify before booking';
+   g.append(card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,fareLabel,f.booking_url));
   });
   s.append(g);root.append(s);
   const t=heading('Arrival and departure strategy','Allow for airport transfers, baggage, check-in and family connection time.');
