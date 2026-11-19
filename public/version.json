@@ -1,5 +1,5 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.4",
   "released": "2026-11-19",
-  "releaseName": "Automatic fallback when flight search quota is exhausted"
+  "releaseName": "Use saved trip details and show SerpApi account diagnostics"
 }
