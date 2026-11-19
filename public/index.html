@@ -226,10 +226,10 @@ function renderContent(){
     const desc=[f.fare_notes,f.booking_advice].filter(Boolean).join(' ');
     const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / passenger · one-way':'Fare unavailable · verify with airline';
     const c=card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,fareLabel,f.booking_url);
-    if(segment==='outbound'||segment==='return'){
-     const chosen=trip.selectedFlights?.[segment]===f._index;
+    if((segment==='outbound'||segment==='return')&&!f.price_unverified&&positiveNumber(f.price_estimate)>0){
+     const chosen=trip.selectedFlights?.[segment]===f._index||trip.liveSelectedFlights?.[segment]===f._index;
      const button=el('button','btn'+(chosen?'':' secondary'),chosen?'Selected for '+segment:'Select this flight');
-     button.type='button';button.onclick=()=>{trip.selectedFlights=trip.selectedFlights||{};trip.selectedFlights[segment]=f._index;render()};
+     button.type='button';button.onclick=()=>{if(f.live_fare){trip.liveSelectedFlights=trip.liveSelectedFlights||{};trip.liveSelectedFlights[segment]=f._index;trip.selectedFlights=trip.selectedFlights||{};delete trip.selectedFlights[segment]}else{trip.selectedFlights=trip.selectedFlights||{};trip.selectedFlights[segment]=f._index;trip.liveSelectedFlights=trip.liveSelectedFlights||{};delete trip.liveSelectedFlights[segment]}render()};
      c.append(button);if(chosen)c.append(el('div','pill','Included in trip budget'));
     }
     grid.append(c);
