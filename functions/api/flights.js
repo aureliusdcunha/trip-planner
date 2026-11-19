@@ -133,7 +133,9 @@ export async function onRequestPost({request,env}){
   if(!options.length)return json({error:errors[0]||"Google Flights did not return fares for this route and date. Try another date."},502);
   const seen=new Set(),unique=[];
   for(const option of options){
-   const signature=[option.segment,option.cabin_class,option.flight_number,option.departure,option.arrival,option.price_estimate].join("|");
+   // A flight-number sequence on the same route/date/cabin is one itinerary.
+   // SerpApi can repeat it across best_flights/other_flights and cabin result pages.
+   const signature=[option.segment,option.cabin_class,option.route,option.flight_number].join("|").toLowerCase().replace(/\s+/g,"");
    if(seen.has(signature))continue;seen.add(signature);unique.push(option);
   }
   unique.sort((a,b)=>a.price_estimate-b.price_estimate);
