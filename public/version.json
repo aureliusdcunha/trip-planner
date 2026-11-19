@@ -1,5 +1,5 @@
 {
-  "version": "1.4.9",
+  "version": "1.5.0",
   "released": "2026-11-19",
-  "releaseName": "Refine budget total comparison layout"
+  "releaseName": "Exclude contingency from base budget estimate"
 }
