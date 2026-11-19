@@ -1,5 +1,5 @@
 {
-  "version": "1.2.5",
+  "version": "1.2.6",
   "released": "2026-11-19",
-  "releaseName": "Wider destination field and aligned traveller inputs"
+  "releaseName": "Correct airfare, family-room and scheduled-meal budget calculations"
 }
