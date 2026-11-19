@@ -122,8 +122,8 @@ function budgetCalc(){
  const shopping=positiveNumber(b.shopping_per_person)*(adults+children);
  const contingencyPercent=Math.max(0,Math.min(30,Number(b.contingency_percent)||0));
  const subtotalWithoutShopping=flights+local+hotel+activities+food;
- const contingencyWithoutShopping=subtotalWithoutShopping*contingencyPercent/100;
- const totalWithoutShopping=subtotalWithoutShopping+contingencyWithoutShopping;
+ const contingencyWithoutShopping=0;
+ const totalWithoutShopping=subtotalWithoutShopping;
  const baseTotal=subtotalWithoutShopping+shopping,contingency=baseTotal*contingencyPercent/100,total=baseTotal+contingency,rate=Number(b.exchange_rate_to_home)||0,code=trip.currency_code||b.currency||'USD';
  const sharedBasePerTraveller=(local+hotel+activities+food)/pax;
  const sharedPerTraveller=(local+hotel+activities+food+shopping)*(1+contingencyPercent/100)/pax;
@@ -379,14 +379,14 @@ function renderContent(){
   addBudgetRow('Contingency ('+(b.contingency_percent||0)+'%)',money(c.contingency,c.code));
   const totalRow=el('tr'),totalLabel=el('td','budget-total','Estimated total'),totalValues=el('td','budget-total budget-total-pair');
   const noShopping=el('div','budget-total-option'),withShopping=el('div','budget-total-option');
-  noShopping.append(el('strong','','Without shopping & miscellaneous*'),el('span','',money(c.totalWithoutShopping,c.code)));
+  noShopping.append(el('strong','','Without shopping, miscellaneous & contingency*'),el('span','',money(c.totalWithoutShopping,c.code)));
   withShopping.append(el('strong','','Including everything*'),el('span','',money(c.total,c.code)));
   totalValues.append(noShopping,withShopping);
   add(totalRow,totalLabel,totalValues);table.append(totalRow);
   s.append(table);
   const flightRates=[c.adults+' adults × '+money(c.flightAdult,c.code),...(c.children?[c.children+' children × '+money(c.flightChild,c.code)]:[]),...(c.infants?[c.infants+' infants × '+money(c.flightInfant,c.code)]:[])].join(' · ');
   s.append(el('p','muted','Round-trip airfare per traveller: '+flightRates+' · Whole-party flight subtotal: '+money(c.flights,c.code)+'. '+(c.hasRoundTripOptions?'Calculated from the outbound and return one-way cards; Alternative fares are not added.':'Flight cards did not contain both legs, so the budget researcher round-trip fare is used as a fallback.')));
-  s.append(el('p','muted','* Without shopping & miscellaneous excludes those expenses; Including everything includes them. Both totals include contingency.'));
+  s.append(el('p','muted','* The first total excludes shopping, miscellaneous and contingency. The second includes all expenses and contingency.'));
   const perTraveller=el('div','grid');
   const dualTravellerCard=(title,baseAmount,fullAmount,note)=>{
    const item=el('article','card');item.append(el('h3','',title));
