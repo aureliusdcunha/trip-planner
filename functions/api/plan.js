@@ -57,8 +57,8 @@ function validateFlightFareScale(flightData,budget,fxRate,homeCurrency){
    const replacement=oneWayBaseline;
    option.price_estimate=replacement;
    option.adult_price_per_person=replacement;
-   if(Number(option.child_price_per_person)>fare*1.5||!Number.isFinite(Number(option.child_price_per_person)))option.child_price_per_person=replacement;
-   if(Number(option.infant_price_per_person)>fare*1.5||!Number.isFinite(Number(option.infant_price_per_person)))option.infant_price_per_person=replacement*.1;
+   if(!Number.isFinite(Number(option.child_price_per_person))||Number(option.child_price_per_person)>oneWayBaseline*4)option.child_price_per_person=replacement;
+   if(!Number.isFinite(Number(option.infant_price_per_person))||Number(option.infant_price_per_person)>oneWayBaseline*.4)option.infant_price_per_person=replacement*.1;
    const note=" Price sanity check: the original model fare was more than four times the independent round-trip budget baseline per leg, so this card uses half of that round-trip baseline as an indicative one-way estimate. Verify actual fares with the airline or booking provider.";
    option.fare_notes=[String(option.fare_notes||"").trim(),note.trim()].filter(Boolean).join(" ");
    option.price_adjusted_for_sanity=true;
