@@ -82,3 +82,22 @@ The current release version is maintained in `public/version.json`. The browser 
 - **MAJOR** (`1.0.0 → 2.0.0`): breaking changes or substantial incompatible redesigns.
 
 Update `released` to the production release date and `releaseName` to a short description. Keep the version manifest and code change in the same pull request so every production deployment has a traceable version.
+
+
+## Live airline fares (Duffel)
+
+The Flights tab can search live airline offers through Duffel. The Cloudflare Pages Function at `/api/flights` keeps the provider token on the server and supports city/airport suggestions, round-trip date inputs, passenger ages, and searches across Economy, Premium Economy, Business and First Class with up to two connections.
+
+Configure the encrypted Cloudflare Pages secret `DUFFEL_ACCESS_TOKEN` (never put the token in browser code or Git). To test safely, create a Duffel test token in Developer test mode; test mode is a sandbox and does **not** provide realistic airline schedules or prices. For real fares, activate the Duffel account and use a live token. The application labels test-mode offers and does not represent them as live fares.
+
+Duffel's offer requests return prices for the entire passenger party. Trip Planner shows that provider total and, when the provider currency matches the trip's local currency or home currency with a known exchange rate, uses an averaged per-traveller amount so the selected outbound and return totals flow into the budget. Individual passenger fares may differ, so the provider total remains the authoritative displayed amount. Offers can expire or change; always recheck before booking. This integration searches and selects offers; it does not issue tickets or collect payment.
+
+Official setup: [Duffel getting started](https://duffel.com/docs/guides/getting-started-with-flights), [test mode](https://duffel.com/docs/api/overview/test-mode), [places suggestions](https://duffel.com/docs/api/v2/places/get-place-suggestions), [offer requests](https://duffel.com/docs/api/v2/offer-requests), [pricing](https://duffel.com/pricing).
+
+Set the Cloudflare Pages secret from a local terminal with Wrangler:
+
+```bash
+npx wrangler pages secret put DUFFEL_ACCESS_TOKEN
+```
+
+Then paste the token when prompted and redeploy the Pages project. A new deployment is required before the live search endpoint can use the secret.
