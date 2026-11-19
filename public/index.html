@@ -153,7 +153,7 @@ function renderContent(){
   const lookup=(field,list)=>{let timer;field.addEventListener('input',()=>{clearTimeout(timer);const q=field.value.trim();if(q.length<3)return;timer=setTimeout(async()=>{try{const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'places',query:q})});const data=await r.json();list.replaceChildren(...(data.places||[]).map(place=>{const option=el('option');option.value=place.label;return option}))}catch{}},600)})};
   lookup(originField.field,originField.list);lookup(destinationField.field,destinationField.list);
   const searchButton=el('button','btn','Search flight prices');searchButton.type='button';
-  const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'One search uses up to 8 SerpApi searches (4 cabin classes × outbound and return). The free plan currently includes 250 searches/month; airport suggestions may also use searches.'];
+  const liveStatus=el('div','live-flight-status',trip.liveFlightStatus||'One search uses up to 8 SerpApi searches (4 cabin classes × outbound and return). The free plan currently includes 250 searches/month; airport suggestions may also use searches.');
   searchButton.onclick=async()=>{
    const code=value=>{const match=String(value||'').match(/\(([A-Z]{3})\)\s*$/);return match?match[1]:/^[A-Z]{3}$/.test(String(value||'').trim())?String(value).trim().toUpperCase():''};
    const fromCode=code(originField.field.value),toCode=code(destinationField.field.value);
