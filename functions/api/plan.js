@@ -153,6 +153,8 @@ function isCapacityError(message){
 }
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
+ const outputLimits={route:1400,flights:2200,transport:1400,stay:2000,attractions:3200,dining:1600,guide:2600,day:2200};
+ let maxOutputTokens=outputLimits[kind]||2000,incompleteRetryCount=0;
  let lastModel="",capacityRetriesForModel=0;
  for(let attempt=0;attempt<20;attempt++){
   await acquireRequestSlot(requestGate);
@@ -169,7 +171,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
   const body={
    model,store:false,input:promptFor(kind,ctx),
    response_format:{type:"text",mime_type:"application/json",schema:schemas[kind]},stream:true,
-   generation_config:{max_output_tokens:kind==="route"?900:kind==="flights"?850:kind==="transport"?800:kind==="stay"?750:kind==="attractions"?900:kind==="dining"?650:kind==="guide"?1100:850,thinking_level:"low"}
+   generation_config:{max_output_tokens:maxOutputTokens,thinking_level:"low"}
   };
   if(useSearch)body.tools=[{type:"google_search"}];
   let response;
@@ -252,14 +254,14 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    buffer+=decoder.decode();if(buffer.trim())parseFrame(buffer);
   }catch(err){readError=err}
   finally{try{reader.releaseLock()}catch{}releaseRequestSlot(requestGate)}
-  const canRetry=attempt<11&&retryBudget.remaining>0;
+  const canRetry=attempt<19&&retryBudget.remaining>0;
   if(readError){
    if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response stream was interrupted; retrying once."});continue}
    throw new Error(label+": response stream interrupted: "+(readError?.message||"network error"));
   }
   if(streamError){
    if(isCapacityError(streamError)){
-    if(capacityRetriesForModel<1&&retryBudget.remaining>0&&attempt<11){
+    if(capacityRetriesForModel<1&&retryBudget.remaining>0&&attempt<19){
      capacityRetriesForModel++;retryBudget.remaining--;
      const delay=1000*Math.pow(2,capacityRetriesForModel-1);
      send({type:"agent_retry",agent:label,message:"Gemini reports high demand; retrying after "+(delay/1000)+"s."});
@@ -271,12 +273,43 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    if(isCapacityError(streamError))throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please wait a few minutes and retry. "+streamError);
    throw new Error(label+": "+streamError);
   }
-  if(status!=="completed"){if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini ended the stream early; retrying once."});continue}throw new Error(label+": Gemini stream ended before the interaction was completed (status "+status+").")}
-  if(!output.trim()){if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini returned no text; retrying once."});continue}throw new Error(label+": Gemini stream ended without structured text.")}
-  let data;try{data=JSON.parse(output.trim())}catch{if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The JSON response was incomplete; retrying once."});continue}throw new Error(label+": Gemini returned incomplete JSON.")}
-  const issue=validateAgent(kind,data,ctx);
-  if(issue){if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response was incomplete; retrying this research task once."});continue}throw new Error(label+": "+issue)}
-  return {data,sources:sourceUnique(sources),queries,model};
+  let data=null,validationIssue="No structured JSON was returned.";
+  if(output.trim()){
+   try{data=JSON.parse(output.trim());validationIssue=validateAgent(kind,data,ctx)}
+   catch{validationIssue="Gemini returned incomplete or invalid JSON."}
+  }
+  if((status==="completed"||status==="incomplete")&&data&&!validationIssue){
+   if(status==="incomplete")send({type:"agent_notice",agent:label,message:"Gemini marked the interaction incomplete, but the returned JSON passed all required checks; retaining the validated result."});
+   return {data,sources:sourceUnique(sources),queries,model,status,maxOutputTokens};
+  }
+  if(status==="incomplete"){
+   if(incompleteRetryCount===0&&requestBudget.remaining>0&&attempt<19){
+    incompleteRetryCount++;
+    const previous=maxOutputTokens;
+    maxOutputTokens=Math.min(8192,Math.max(previous+1000,previous*2));
+    send({type:"agent_retry",agent:label,message:"Gemini stopped at its output-token limit. Retrying with "+maxOutputTokens+" output tokens (previously "+previous+")."});
+    continue;
+   }
+   if(incompleteRetryCount===1){
+    const next=advanceModel(modelState,model);
+    if(next&&requestBudget.remaining>0&&attempt<19){
+     incompleteRetryCount++;
+     modelState.switched=true;
+     send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"The response remained incomplete after increasing its output limit. Retrying "+label+" with "+next+"."});
+     continue;
+    }
+   }
+   throw new Error(label+": Gemini still returned an incomplete response after increasing the output limit to "+maxOutputTokens+" tokens. "+validationIssue);
+  }
+  if(status!=="completed"){
+   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Gemini ended the stream before completion; retrying once."});continue}
+   throw new Error(label+": Gemini stream ended before the interaction was completed (status "+status+").");
+  }
+  if(!output.trim()||validationIssue){
+   if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The structured response was incomplete; retrying this research task once."});continue}
+   throw new Error(label+": "+validationIssue);
+  }
+  return {data,sources:sourceUnique(sources),queries,model,status,maxOutputTokens};
  }
  throw new Error(label+": Gemini was temporarily unavailable after all configured model attempts.");
 }

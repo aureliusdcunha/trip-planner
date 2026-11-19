@@ -42,6 +42,10 @@ Gemini Free Tier may return HTTP 429 for a per-minute request limit while the mo
 
 A shared request gate limits the planner to two in-flight Gemini requests and spaces request starts by at least 4.3 seconds (under 14 starts per minute). The UI displays the cooldown while researchers wait. A bounded request budget and overall plan deadline still apply; if provider capacity or quota remains unavailable after the allowed attempts, the plan reports that limitation.
 
+### Incomplete Gemini response recovery
+
+Specialist calls use larger output-token budgets appropriate to their structured result sizes (attractions 3,200 tokens, hotels 2,000, flights 2,200, daily plans 2,200, and larger limits for guide/budget output). If Gemini ends with status `incomplete`, the planner first checks whether the JSON is nevertheless complete and passes all required validation. Otherwise it retries the same model once with a doubled output limit (up to 8,192 tokens), then tries the next configured model if needed. This recovery path uses the existing per-itinerary API request ceiling and reports a named task error only after bounded recovery is exhausted.
+
 ### Home-currency prices and report detail
 
 All model price fields are returned in destination-local currency. The Worker fetches a daily reference rate from Frankfurter's public API and pins the traveller's selected home currency onto the budget. The report displays home currency first and destination-local currency in brackets (for example, `₹2,350 (THB 1,000)`). If the reference-rate service is unavailable, the app uses the model-estimated rate when available and labels that fallback.
