@@ -1,5 +1,5 @@
 {
-  "version": "1.2.3",
+  "version": "1.2.4",
   "released": "2026-11-19",
-  "releaseName": "Derived traveller summary, aligned destination dates and checkbox row"
+  "releaseName": "Clear age-specific trip costs and fix daily itinerary rendering"
 }
