@@ -84,20 +84,22 @@ The current release version is maintained in `public/version.json`. The browser 
 Update `released` to the production release date and `releaseName` to a short description. Keep the version manifest and code change in the same pull request so every production deployment has a traceable version.
 
 
-## Live airline fares (Duffel)
+## Flight price search (Google Flights via SerpApi)
 
-The Flights tab can search live airline offers through Duffel. The Cloudflare Pages Function at `/api/flights` keeps the provider token on the server and supports city/airport suggestions, round-trip date inputs, passenger ages, and searches across Economy, Premium Economy, Business and First Class with up to two connections.
+The Flights tab is a price-comparison tool only. It does not book flights, create orders, request booking tokens, issue tickets, or collect payments.
 
-Configure the encrypted Cloudflare Pages secret `DUFFEL_ACCESS_TOKEN` using a Duffel access token with permission to create air offer requests and read place suggestions (never put the token in browser code or Git). To test safely, create a Duffel test token in Developer test mode; test mode is a sandbox and does **not** provide realistic airline schedules or prices. For real fares, activate the Duffel account and use a live token. The application labels test-mode offers and does not represent them as live fares.
+The Cloudflare Pages Function at `/api/flights` uses SerpApi's Google Flights and Google Flights Autocomplete engines. It supports airport suggestions, outbound and return one-way price searches, and four cabin classes: Economy, Premium Economy, Business and First. Results include airlines, flight numbers, times, journey duration, stop count, layovers and indicative prices. TripPlanner's cabin and stop filters work locally on the returned results and do not trigger additional API searches.
 
-Duffel's offer requests return prices for the entire passenger party. Trip Planner shows that provider total and, when the provider currency matches the trip's local currency or home currency with a known exchange rate, uses an averaged per-traveller amount so the selected outbound and return totals flow into the budget. Individual passenger fares may differ, so the provider total remains the authoritative displayed amount. Offers can expire or change; always recheck before booking. This integration searches and selects offers; it does not issue tickets or collect payment.
-
-Official setup: [Duffel getting started](https://duffel.com/docs/guides/getting-started-with-flights), [test mode](https://duffel.com/docs/api/overview/test-mode), [places suggestions](https://duffel.com/docs/api/v2/places/get-place-suggestions), [offer requests](https://duffel.com/docs/api/v2/offer-requests), [pricing](https://duffel.com/pricing).
-
-Set the Cloudflare Pages secret from a local terminal with Wrangler:
+Configure the encrypted Cloudflare Pages secret `SERPAPI_API_KEY`. Never put the key in browser code or commit it to Git. From a local terminal, Wrangler can set it with:
 
 ```bash
-npx wrangler pages secret put DUFFEL_ACCESS_TOKEN
+npx wrangler pages secret put SERPAPI_API_KEY
 ```
 
-Then paste the token when prompted and redeploy the Pages project. A new deployment is required before the live search endpoint can use the secret.
+Then paste the key when prompted and redeploy the Pages project.
+
+SerpApi currently lists a free plan with 250 searches per month and 50 searches per hour. A full TripPlanner fare search performs eight Google Flights searches (four cabin classes × outbound and return). Airport autocomplete requests also use the provider, although exact cached searches may be served without consuming a search. Therefore the free allowance supports approximately 31 full fare-search sessions per month before autocomplete usage. Monitor the SerpApi dashboard for actual consumption and plan limits.
+
+Prices are indicative Google Flights results, not guaranteed airline inventory or a final payable quote. The API query is made for one adult so displayed fares are per adult. The TripPlanner budget uses the adult fare as a planning proxy for children and estimates lap infants at 10%; passenger-specific fares may differ. The provider's result should be checked again close to purchase. No booking link or booking flow is implemented.
+
+Official references: [Google Flights API](https://serpapi.com/google-flights-api), [Google Flights Autocomplete API](https://serpapi.com/google-flights-autocomplete-api), [SerpApi pricing](https://serpapi.com/pricing).
