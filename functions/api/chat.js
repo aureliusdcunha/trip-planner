@@ -39,13 +39,14 @@ export async function onRequestPost({request,env}){
   const messages=[{role:"system",content:system},...history,{role:"user",content:message}];
   const input=[{role:"user",content:system},...history.map(x=>({role:x.role,content:x.content})),{role:"user",content:message}];
   const configured={
+   cloudflare:env.AI?{model:"@cf/zai-org/glm-4.7-flash"}:null,
    gemini:env.GEMINI_API_KEY?{key:env.GEMINI_API_KEY,model:clip(env.MODEL||"gemini-3.8-flash",100)}:null,
    openai:env.OPENAI_API_KEY?{key:env.OPENAI_API_KEY,model:clip(env.OPENAI_CHAT_MODEL||"gpt-4.1-mini",100)}:null,
    groq:env.GROQ_API_KEY?{key:env.GROQ_API_KEY,model:clip(env.GROQ_CHAT_MODEL||"llama-3.3-70b-versatile",100)}:null,
    openrouter:env.OPENROUTER_API_KEY?{key:env.OPENROUTER_API_KEY,model:clip(env.OPENROUTER_CHAT_MODEL||"openai/gpt-4.1-mini",120)}:null,
    anthropic:env.ANTHROPIC_API_KEY?{key:env.ANTHROPIC_API_KEY,model:clip(env.ANTHROPIC_CHAT_MODEL||"claude-3-5-haiku-20241022",100)}:null
   };
-  const preferred=clip(env.AI_PROVIDER_ORDER||"gemini,openai,groq,openrouter,anthropic",180).split(",").map(x=>x.trim().toLowerCase()).filter(x=>Object.hasOwn(configured,x));
+  const preferred=clip(env.AI_PROVIDER_ORDER||"cloudflare,gemini,openai,groq,openrouter,anthropic",180).split(",").map(x=>x.trim().toLowerCase()).filter(x=>Object.hasOwn(configured,x));
   const order=[...new Set(preferred)].filter(x=>configured[x]);
   if(!order.length)return J({error:"No AI provider is configured. Add at least one provider API key in Cloudflare Pages secrets."},503);
   const failures=[];
@@ -53,7 +54,13 @@ export async function onRequestPost({request,env}){
    const cfg=configured[provider];
    try{
     let result;
-    if(provider==="gemini")result=await gemini(cfg.model,cfg.key,input);
+    if(provider==="cloudflare"){
+      const data=await env.AI.run(cfg.model,{messages,max_completion_tokens:1800,chat_template_kwargs:{enable_thinking:false}});
+      const answer=getText(data).trim();
+      if(!answer)throw new Error("Cloudflare Workers AI returned an empty response.");
+      result={answer,sources:[]};
+    }
+    else if(provider==="gemini")result=await gemini(cfg.model,cfg.key,input);
     else if(provider==="openai")result=await requestJson("https://api.openai.com/v1/chat/completions",{...jsonHeaders,authorization:"Bearer "+cfg.key},{model:cfg.model,messages,max_completion_tokens:1800});
     else if(provider==="groq")result=await requestJson("https://api.groq.com/openai/v1/chat/completions",{...jsonHeaders,authorization:"Bearer "+cfg.key},{model:cfg.model,messages,max_tokens:1800});
     else if(provider==="openrouter")result=await requestJson("https://openrouter.ai/api/v1/chat/completions",{...jsonHeaders,authorization:"Bearer "+cfg.key,"HTTP-Referer":"https://trip-planner.petalfolio.co.in","X-OpenRouter-Title":"TripPlanner"},{model:cfg.model,messages,max_tokens:1800});
