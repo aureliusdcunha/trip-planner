@@ -23,6 +23,23 @@ async function serpSearch(params,key){
  }
  return body;
 }
+async function rankFlightOptionsWithWorkersAI(options,env){
+ if(!env?.AI||!Array.isArray(options)||options.length<2)return {options,used:false};
+ const candidates=options.slice(0,40);
+ const compact=candidates.map((f,i)=>({id:i,segment:f.segment,airline:f.airlines,flight:f.flight_number,route:f.route,cabin:f.cabin_class,price:f.price_estimate,currency:f.currency||"",duration:f.duration,stops:f.stops,layover:f.layovers||"",departure:f.departure,arrival:f.arrival,baggage:f.baggage||""}));
+ try{
+  const result=await env.AI.run("@cf/zai-org/glm-4.7-flash",{messages:[
+   {role:"system",content:"Rank flight options for a traveller. Return only valid JSON: {\"outbound\":[ids in best-first order],\"return\":[ids in best-first order],\"other\":[ids in best-first order]}. Never invent, alter or remove options. Prefer reasonable total fare, shorter journey, fewer stops and shorter layovers; consider baggage and schedule. Rank each segment separately."},
+   {role:"user",content:JSON.stringify(compact)}
+  ],max_completion_tokens:900,chat_template_kwargs:{enable_thinking:false}});
+  const raw=typeof result?.response==="string"?result.response:typeof result?.result==="string"?result.result:Array.isArray(result?.choices)?result.choices[0]?.message?.content:result?.output_text;
+  const parsed=JSON.parse(String(raw||"").replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim());
+  const ids=[...new Set(["outbound","return","other"].flatMap(k=>Array.isArray(parsed[k])?parsed[k]:[]).filter(i=>Number.isInteger(i)&&i>=0&&i<candidates.length))];
+  if(ids.length<2)return {options,used:false};
+  const ranked=ids.map(i=>candidates[i]),used=new Set(ids);
+  return {options:[...ranked,...candidates.filter((_,i)=>!used.has(i)),...options.slice(40)],used:true};
+ }catch(error){console.warn("Workers AI flight ranking unavailable; retaining source order:",error?.message||error);return {options,used:false}}
+}
 function formatTime(value){
  if(!value)return "";
  const m=String(value).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
@@ -190,9 +207,10 @@ export async function onRequestPost({request,env}){
    if(seen.has(signature))continue;seen.add(signature);unique.push(option);
   }
   unique.sort((a,b)=>a.price_estimate-b.price_estimate);
+  const ranked=await rankFlightOptionsWithWorkersAI(unique,env);
   return json({
    source:"Google Flights via SerpApi",searchedAt:new Date().toISOString(),origin:from,destination:to,currency,
-   options:unique.slice(0,160),searchesUsed:8,partial:errors.length>0,errors:errors.slice(0,2),
+   options:ranked.options.slice(0,160),ranking:"workers_ai",ranking_used:ranked.used,searchesUsed:8,partial:errors.length>0,errors:errors.slice(0,2),
    notice:"Indicative Google Flights prices only. Prices and availability can change. No booking, ticketing or payment is performed. Child and infant budget amounts are estimates."
   });
  }catch(error){
