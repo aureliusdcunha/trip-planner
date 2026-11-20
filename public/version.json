@@ -1,5 +1,5 @@
 {
-  "version": "1.6.3",
+  "version": "1.6.4",
   "released": "2026-11-20",
-  "releaseName": "Cloudflare Workers AI chatbot provider"
+  "releaseName": "Configure Workers AI binding for Pages"
 }
