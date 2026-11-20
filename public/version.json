@@ -1,5 +1,5 @@
 {
-  "version": "1.6.0",
+  "version": "1.6.1",
   "released": "2026-11-20",
-  "releaseName": "Add general and trip-aware AI assistant"
+  "releaseName": "Fix budget and experience table layout"
 }
