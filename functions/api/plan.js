@@ -514,12 +514,14 @@ export async function onRequestPost({request,env}){
        const freshSources=(freshFlight.sources||[]).map(x=>({...x,agent:"Flight researcher"}));
        combined.research_sources=sourceUnique([...retainedSources,...freshSources]);
        combined.research=combined.research||{};
-       combined.research.flight_refresh_model=freshFlight.model;
-       combined.research.flight_refresh_search_queries=freshFlight.queries.length;
-       combined.research.flight_refresh_source_count=freshFlight.sources.length;
-       combined.research.flight_refreshed_at=new Date().toISOString();
-       emit({type:"agent_completed",agent:"Flight researcher",completed:1,total:1,sourceCount:freshFlight.sources.length,searchCount:freshFlight.queries.length});
-       combined.cache={hit:true,createdAt:cachedTrip.createdAt,flightsRefreshed:true};
+       if(freshFlight){
+        combined.research.flight_refresh_model=freshFlight.model;
+        combined.research.flight_refresh_search_queries=freshFlight.queries.length;
+        combined.research.flight_refresh_source_count=freshFlight.sources.length;
+        combined.research.flight_refreshed_at=new Date().toISOString();
+        emit({type:"agent_completed",agent:"Flight researcher",completed:1,total:1,sourceCount:freshFlight.sources.length,searchCount:freshFlight.queries.length});
+       }
+       combined.cache={hit:true,createdAt:cachedTrip.createdAt,flightsRefreshed:!!freshFlight};
        emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt});
        return;
       }
