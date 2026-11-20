@@ -1,5 +1,5 @@
 {
-  "version": "1.6.6",
+  "version": "1.6.7",
   "released": "2026-11-20",
-  "releaseName": "Accept smaller verified flight comparison sets"
+  "releaseName": "Improve live flight filters and cards"
 }
