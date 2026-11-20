@@ -462,14 +462,36 @@ export async function onRequestPost({request,env}){
       const retryBudget={remaining:7};
       const requestBudget={remaining:49};
       const requestGate=createRequestGate(2,4300);
+      if(b.retryOnly&&cachedTrip?.report){
+       const request=b.retryOnly,kind=String(request.kind||""),areaName=clip(request.area,100),date=clip(request.date,10);
+       const allowed=["flights","stay","attractions","dining","transport","day"];
+       if(!allowed.includes(kind))throw new Error("This section cannot be retried independently.");
+       const report=JSON.parse(JSON.stringify(cachedTrip.report));
+       const area=report.areas?.find(x=>x.name===areaName);
+       const label=kind==="day"?"Day planner · "+date:kind==="transport"?"Transport researcher":kind==="flights"?"Flight researcher":kind+" researcher · "+areaName;
+       const ctx={trip,useSearch,areas:report.areas||[],area,label,date,dayNumber:(report.days||[]).findIndex(x=>x.date===date)+1,base:(report.days||[]).find(x=>x.date===date)?.base||""};
+       const result=await runAgent(kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
+       if(kind==="flights"){const data=result.data;report.flight_options=data.flight_options||[];report.getting_there=data.getting_there||"";const ranked=await rankFlightOptionsWithWorkersAI(report.flight_options,env);report.flight_options=ranked.options;}
+       else if(kind==="stay"){if(!area)throw new Error("The requested area was not found in the saved report.");area.hotel_options=result.data.hotel_options||[];}
+       else if(kind==="attractions"){report.highlights=(report.highlights||[]).filter(x=>String(x.area||"")!==areaName).concat(result.data.highlights||[]);}
+       else if(kind==="dining"){report.dining=(report.dining||[]).filter(x=>String(x.area||"")!==areaName).concat(result.data.dining||[]);}
+       else if(kind==="transport")report.internal_transport=result.data.internal_transport||[];
+       else if(kind==="day"){const index=(report.days||[]).findIndex(x=>x.date===date);if(index<0)throw new Error("The requested day was not found.");report.days[index]=result.data.days[0];}
+       report.research_unavailable=(report.research_unavailable||[]).filter(x=>!(x.kind===kind&&(kind==="day"?x.date===date:kind==="transport"||kind==="flights"?true:x.area===areaName)));
+       report.research_sources=sourceUnique([...(report.research_sources||[]),...(result.sources||[])]).map(x=>({...x,agent:label}));
+       const saved=await writeTripReportCache(env,cacheKey,cacheInput,report);
+       report.cache={hit:true,saved,retried:kind,createdAt:new Date().toISOString()};
+       emit({type:"result",data:report});return;
+      }
       if(cachedTrip?.report){
        emit({type:"stage",stage:"cache",message:"Found a matching trip report. Reusing the saved itinerary and refreshing flight research…",agentTotal:1,cacheHit:true});
        emit({type:"agent_started",agent:"Flight researcher",completed:0,total:1});
-       const freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher"},env,emit,retryBudget,modelState,requestBudget,requestGate);
        let combined=JSON.parse(JSON.stringify(cachedTrip.report));
-       const flightResearch=freshFlight.data;
-       combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];
-       combined.getting_there=flightResearch.getting_there||"";
+       let freshFlight=null;
+       try{freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher"},env,emit,retryBudget,modelState,requestBudget,requestGate)}
+       catch(error){combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];}
+       const flightResearch=freshFlight?.data||{};
+       if(freshFlight){combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];combined.getting_there=flightResearch.getting_there||"";combined.research_unavailable=(combined.research_unavailable||[]).filter(x=>x.kind!=="flights");}
        if(combined.flight_options.length){
         const ranked=await rankFlightOptionsWithWorkersAI(combined.flight_options,env);
         combined.flight_options=ranked.options;
@@ -521,6 +543,7 @@ export async function onRequestPost({request,env}){
       if(criticalOpeningFailures.length)throw new Error("Essential trip research could not complete: "+criticalOpeningFailures.map(x=>x.task.label+" — "+x.error).join("; "));
       const openingResults=openingRuns.filter(x=>x.ok).map(x=>x.value);
       const researchWarnings=openingFailures.map(x=>x.task.label+" could not complete: "+x.error);
+      const unavailable=openingFailures.map(x=>({kind:x.task.kind,label:x.task.label,error:x.error}));
       const route=openingResults.find(x=>x.kind==="route");
       const areas=normaliseAreas(route.data.areas,dayCount-1,maxBases);
       const fxRatePromise=getExchangeRate(route.data.currency_code,trip.cur);
@@ -543,6 +566,7 @@ export async function onRequestPost({request,env}){
       },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const specialistFailures=specialistRuns.filter(x=>!x.ok);
       researchWarnings.push(...specialistFailures.map(x=>x.task.label+" could not complete: "+x.error));
+      unavailable.push(...specialistFailures.map(x=>({kind:x.task.kind,area:x.task.area?.name||"",label:x.task.label,error:x.error})));
       const specialistResults=[...openingResults.filter(x=>x.kind!=="route"),...specialistRuns.filter(x=>x.ok).map(x=>x.value)];
       const combined={
        ...route.data,
@@ -612,17 +636,23 @@ export async function onRequestPost({request,env}){
        return {day:result.data.days[0],model:result.model};
       },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const dayFailures=dayRuns.filter(x=>!x.ok);
-      if(dayFailures.length)throw new Error("These daily plans could not complete: "+dayFailures.map(x=>x.task.label+" — "+x.error).join("; "));
-      const dayResults=dayRuns.map(x=>x.value);
-      combined.days=dayResults.map(x=>x.day).sort((a,b)=>a.date.localeCompare(b.date));
+      unavailable.push(...dayFailures.map(x=>({kind:"day",date:x.task.date,base:x.task.base,label:x.task.label,error:x.error})));
+      const dayResults=dayRuns.filter(x=>x.ok).map(x=>x.value);
+      const dayByDate=new Map(dayResults.map(x=>[x.day.date,x.day]));
+      combined.days=dayDates.map((date,index)=>dayByDate.get(date)||({date,base:schedule[index],title:"Daily plan temporarily unavailable",subtitle:"This day could not be researched because the source was busy.",pace:"",activities:[],meals:[],overnight:schedule[index],day_estimate:0}));
       const allResearch=[{label:"Route architect",sources:route.sources||[],queries:route.queries||[]},...specialistResults];
       combined.research_sources=sourceUnique(allResearch.flatMap(x=>x.sources||[])).map(s=>({...s,agent:allResearch.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
       const modelsUsed=Array.from(new Set([route.model,...specialistResults.map(x=>x.model),...dayResults.map(x=>x.model)].filter(Boolean)));
       combined.research={search_requested:useSearch,search_enabled:useSearch&&!(modelState.freeTier&&modelState.switched),search_disabled_for_free_tier_fallback:modelState.freeTier&&modelState.switched&&useSearch,primary_model:modelState.primary,fallback_models:modelState.models.slice(1),model_fallback_used:modelState.switched,model_used:modelsUsed.length===1?modelsUsed[0]:modelsUsed.join(", "),models_used:modelsUsed,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
       const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats","shopping_guide"];
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
-      if(combined.areas.some(a=>!Array.isArray(a.hotel_options)||!a.hotel_options.length))throw new Error("At least one stay researcher did not return suitable hotel options.");
-      if(combined.days.some((d,i)=>d.date!==dayDates[i]||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2))throw new Error("One or more day planners returned an incomplete daily plan.");
+      combined.research_unavailable=unavailable;
+      if(unavailable.length){
+       combined.research_warnings=researchWarnings;
+       combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
+       combined.caveats.push("Some sections are temporarily unavailable. Use the section-specific Try again controls to refresh only those results.");
+       emit({type:"agent_notice",message:unavailable.length+" section(s) are temporarily unavailable. The rest of your trip research is ready."});
+      }
       const cacheReport=JSON.parse(JSON.stringify(combined));
       cacheReport.flight_options=[];
       cacheReport.getting_there="";
