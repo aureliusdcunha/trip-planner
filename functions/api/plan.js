@@ -203,6 +203,23 @@ function releaseRequestSlot(gate){
 function isCapacityError(message){
  return /high demand|spikes? in demand|currently experiencing|capacity|overload|resource_exhausted|temporar|unavailable|gateway|server busy/i.test(String(message||""));
 }
+async function rankFlightOptionsWithWorkersAI(options,env){
+ if(!env?.AI||!Array.isArray(options)||options.length<2)return {options,used:false};
+ const candidates=options.slice(0,40);
+ const compact=candidates.map((f,i)=>({id:i,segment:f.segment,airline:f.airlines,flight:f.flight_number,route:f.route,cabin:f.cabin_class,price:f.price_estimate,currency:f.currency||"",duration:f.duration,stops:f.stops,layover:f.layovers||"",departure:f.departure,arrival:f.arrival,baggage:f.baggage||""}));
+ try{
+  const result=await env.AI.run("@cf/zai-org/glm-4.7-flash",{messages:[
+   {role:"system",content:"Rank flight options for a traveller. Return only valid JSON: {\"outbound\":[ids in best-first order],\"return\":[ids in best-first order],\"other\":[ids in best-first order]}. Never invent, alter or remove options. Prefer reasonable total fare, shorter journey, fewer stops and shorter layovers; consider baggage and schedule. Rank each segment separately."},
+   {role:"user",content:JSON.stringify(compact)}
+  ],max_completion_tokens:900,chat_template_kwargs:{enable_thinking:false}});
+  const raw=typeof result?.response==="string"?result.response:typeof result?.result==="string"?result.result:Array.isArray(result?.choices)?result.choices[0]?.message?.content:result?.output_text;
+  const parsed=JSON.parse(String(raw||"").replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim());
+  const ids=[...new Set(["outbound","return","other"].flatMap(k=>Array.isArray(parsed[k])?parsed[k]:[]).filter(i=>Number.isInteger(i)&&i>=0&&i<candidates.length))];
+  if(ids.length<2)return {options,used:false};
+  const ranked=ids.map(i=>candidates[i]),used=new Set(ids);
+  return {options:[...ranked,...candidates.filter((_,i)=>!used.has(i)),...options.slice(40)],used:true};
+ }catch(error){console.warn("Workers AI flight ranking unavailable; retaining source order:",error?.message||error);return {options,used:false}}
+}
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
  const outputLimits={route:1400,flights:2200,transport:1400,stay:2000,attractions:3400,dining:2400,guide:3200,day:4600};
@@ -487,6 +504,7 @@ export async function onRequestPost({request,env}){
       const homeCurrency=String(trip.cur||"INR").toUpperCase();
       const fxRate=await fxRatePromise;
       const flightResearch=specialistResults.find(x=>x.kind==="flights")?.data;
+      if(flightResearch?.flight_options?.length){const ranked=await rankFlightOptionsWithWorkersAI(flightResearch.flight_options,env);flightResearch.flight_options=ranked.options;combined.flight_options=ranked.options;emit({type:"flight_ranking",used:ranked.used,message:ranked.used?"Comparing flight prices, journey times, stops and layovers…":"Keeping the researched flight order while preparing your comparisons."})}
       const fareScaleCheck=validateFlightFareScale(flightResearch,guide.budget,fxRate,homeCurrency);
       if(fareScaleCheck.invalid){
        guide.caveats=Array.isArray(guide.caveats)?guide.caveats:[];
