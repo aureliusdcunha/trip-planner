@@ -157,6 +157,22 @@ function renderContent(){
   [['Best time to visit',trip.best_time],['Destination context',trip.local_context],['Getting there',trip.getting_there],['Route and overnight bases',trip.areas.map(x=>x.name+' ('+x.nights+')').join(' → ')],['Home currency',home+' · local prices shown in brackets as '+local],['Estimated trip budget',money(budgetCalc().total,local)]].forEach(x=>g.append(card(x[0],x[1])));
   s.append(g);
   
+  if((trip.research_unavailable||[]).length){
+   const panel=section('Research temporarily unavailable','Other trip details are ready. Retry any missing section independently; successful results will remain unchanged.');
+   (trip.research_unavailable||[]).forEach(item=>{
+    const row=el('div','retry-row');row.style.display='flex';row.style.alignItems='center';row.style.justifyContent='space-between';row.style.gap='12px';row.style.padding='8px 0';row.style.borderBottom='1px solid var(--line,#e5ddd0)';
+    const name=item.label||item.kind;
+    const detail=el('span','',name+(item.error?' · '+item.error:''));
+    const button=el('button','btn secondary','Try again');button.type='button';
+    button.onclick=async()=>{
+     if(button.disabled)return;button.disabled=true;button.textContent='Retrying…';
+     const payload={dest:trip.dest,d1:trip.d1,d2:trip.d2,pax:trip.pax,adults:trip.adults,children:trip.children,infants:trip.infants,childAges:trip.childAges||[],bud:trip.bud,cur:trip.budget?.home_currency||$('cur').value,from:trip.from,int:trip.int,useSearch:trip.research?.search_requested===true,includeShopping:trip.includeShopping!==false,zeroDaysWasted:trip.zeroDaysWasted===true,retryOnly:{kind:item.kind,area:item.area||'',date:item.date||''}};
+     try{const updated=await requestItinerary(payload);trip=updated;render();}catch(error){button.disabled=false;button.textContent='Try again';detail.textContent=name+' · '+(error.message||'Retry failed.');}
+    };
+    row.append(detail,button);panel.append(row);
+   });
+   s.append(panel);
+  }
   (trip.caveats||[]).forEach(x=>s.append(el('div','warn','Note: '+x)));
   root.append(s);
  }
@@ -542,7 +558,7 @@ $('tripForm').onsubmit=async ev=>{
   else if(parsed.cache?.saved)cacheMessage=parsed.cache?.refreshed?'All trip research was refreshed and saved.':'Trip research completed and saved for faster reuse next time.';
   const required=['flight_options','internal_transport','areas','highlights','dining','days','tips','caveats'];
   const dates=Array.from({length:n},(_,i)=>new Date(Date.parse(d1+'T00:00:00Z')+i*864e5).toISOString().slice(0,10));
-  if(required.some(k=>!Array.isArray(parsed[k]))||parsed.days.length!==n||!parsed.budget||!parsed.practical||parsed.days.some((d,i)=>d.date!==dates[i]||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2))throw Error('The completed itinerary did not pass final validation. Please retry.');
+  if(required.some(k=>!Array.isArray(parsed[k]))||parsed.days.length!==n||!parsed.budget||!parsed.practical||parsed.days.some((d,i)=>d.date!==dates[i]||!Array.isArray(d.activities)||!Array.isArray(d.meals)||((d.activities.length<3||d.meals.length<2)&&!(parsed.research_unavailable||[]).some(x=>x.kind==="day"&&x.date===d.date))))throw Error('The completed itinerary did not pass final validation. Please retry.');
   trip=parsed;trip.requestedCabin=input.cabin||'Any';trip.requestedStops=input.stops||'Any';trip.flightFilters={cabin:trip.requestedCabin,stops:trip.requestedStops};trip.selectedFlights={};['outbound','return'].forEach(segment=>{const all=(trip.flight_options||[]).map((f,index)=>({f,index})).filter(x=>String(x.f.segment||'').toLowerCase()===segment&&positiveNumber(x.f.price_estimate)>0);const wantedCabin=String(trip.requestedCabin||'Any').toLowerCase(),wantedStops=String(trip.requestedStops||'Any');const preferred=all.filter(x=>(wantedCabin==='any'||String(x.f.cabin_class||'').toLowerCase().includes(wantedCabin))&&(wantedStops==='Any'||(wantedStops==='0'?/non.?stop|direct|^0$/i.test(String(x.f.stops||'')):new RegExp('^'+wantedStops+'\\s*stop','i').test(String(x.f.stops||'')))));const candidates=(preferred.length?preferred:all).sort((a,b)=>positiveNumber(a.f.price_estimate)-positiveNumber(b.f.price_estimate));if(candidates.length)trip.selectedFlights[segment]=candidates[0].index});trip.pax=pax;trip.adults=adults;trip.children=children;trip.infants=infants;trip.childAges=childAges;trip.includeShopping=input.includeShopping;trip.zeroDaysWasted=input.zeroDaysWasted;trip.bud=input.bud;trip.generatedBudgetStyle=input.bud;trip.hotelStyle=input.bud;trip.diningStyle=input.bud;active='Overview';$('status').textContent=cacheMessage;if(parsed.cache?.hit){const cachedDate=parsed.cache.createdAt?new Date(parsed.cache.createdAt):null;const isSameLocalDay=cachedDate&&cachedDate.toDateString()===new Date().toDateString();if(!isSameLocalDay){const refresh=el('button','btn secondary','Refresh all research');refresh.type='button';refresh.id='cacheRefresh';refresh.onclick=()=>{forceRefreshNext=true;$('tripForm').requestSubmit()};$('status').append(' ',refresh)}}render();collapseTripForm(true);
  }catch(e){$('status').textContent='Could not complete itinerary: '+(e.message||'Please retry.')}
  finally{$('generate').disabled=false}
