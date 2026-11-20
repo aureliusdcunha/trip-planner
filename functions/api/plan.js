@@ -1,3 +1,4 @@
+import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 // Cloudflare Pages Function: POST /api/plan
 // Parallel travel-research specialists orchestrated by one streamed request.
 // Each specialist returns a bounded JSON object; route -> research -> day planners.
@@ -204,11 +205,11 @@ function isCapacityError(message){
  return /high demand|spikes? in demand|currently experiencing|capacity|overload|resource_exhausted|temporar|unavailable|gateway|server busy/i.test(String(message||""));
 }
 async function rankFlightOptionsWithWorkersAI(options,env){
- if(!env?.AI||!Array.isArray(options)||options.length<2)return {options,used:false};
+ if(!env?.AI||!env?.QUOTA_DB||!Array.isArray(options)||options.length<2)return {options,used:false};
  const candidates=options.slice(0,40);
  const compact=candidates.map((f,i)=>({id:i,segment:f.segment,airline:f.airlines,flight:f.flight_number,route:f.route,cabin:f.cabin_class,price:f.price_estimate,currency:f.currency||"",duration:f.duration,stops:f.stops,layover:f.layovers||"",departure:f.departure,arrival:f.arrival,baggage:f.baggage||""}));
  try{
-  const result=await env.AI.run("@cf/zai-org/glm-4.7-flash",{messages:[
+  const messages=[
    {role:"system",content:"Rank flight options for a traveller. Return only valid JSON: {\"outbound\":[ids in best-first order],\"return\":[ids in best-first order],\"other\":[ids in best-first order]}. Never invent, alter or remove options. Prefer reasonable total fare, shorter journey, fewer stops and shorter layovers; consider baggage and schedule. Rank each segment separately."},
    {role:"user",content:JSON.stringify(compact)}
   ],max_completion_tokens:900,chat_template_kwargs:{enable_thinking:false}});
