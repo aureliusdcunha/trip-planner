@@ -517,8 +517,10 @@ export async function onRequestPost({request,env}){
        return {...task,...result};
       },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const openingFailures=openingRuns.filter(x=>!x.ok);
-      if(openingFailures.length)throw new Error("These initial research tasks could not complete: "+openingFailures.map(x=>x.task.label+" — "+x.error).join("; "));
-      const openingResults=openingRuns.map(x=>x.value);
+      const criticalOpeningFailures=openingFailures.filter(x=>["route","guide"].includes(x.task.kind));
+      if(criticalOpeningFailures.length)throw new Error("Essential trip research could not complete: "+criticalOpeningFailures.map(x=>x.task.label+" — "+x.error).join("; "));
+      const openingResults=openingRuns.filter(x=>x.ok).map(x=>x.value);
+      const researchWarnings=openingFailures.map(x=>x.task.label+" could not complete: "+x.error);
       const route=openingResults.find(x=>x.kind==="route");
       const areas=normaliseAreas(route.data.areas,dayCount-1,maxBases);
       const fxRatePromise=getExchangeRate(route.data.currency_code,trip.cur);
@@ -540,8 +542,8 @@ export async function onRequestPost({request,env}){
        return {...task,...result};
       },failure=>emit({type:"agent_failed",agent:failure.task.label,error:failure.error}));
       const specialistFailures=specialistRuns.filter(x=>!x.ok);
-      if(specialistFailures.length)throw new Error("These research tasks could not complete: "+specialistFailures.map(x=>x.task.label+" — "+x.error).join("; "));
-      const specialistResults=[...openingResults.filter(x=>x.kind!=="route"),...specialistRuns.map(x=>x.value)];
+      researchWarnings.push(...specialistFailures.map(x=>x.task.label+" could not complete: "+x.error));
+      const specialistResults=[...openingResults.filter(x=>x.kind!=="route"),...specialistRuns.filter(x=>x.ok).map(x=>x.value)];
       const combined={
        ...route.data,
        areas:areas.map(area=>{
@@ -556,6 +558,12 @@ export async function onRequestPost({request,env}){
       };
       const guide=specialistResults.find(x=>x.kind==="guide")?.data;
       if(!guide)throw new Error("The practical guide and budget specialist did not complete.");
+      if(researchWarnings.length){
+       combined.research_warnings=researchWarnings;
+       combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
+       combined.caveats.push("Some optional research sections could not be completed because a research provider was temporarily overloaded. Missing sections are left blank rather than invented.");
+       emit({type:"agent_notice",message:"The main itinerary is continuing. "+researchWarnings.length+" optional research section(s) could not be completed and will be clearly marked."});
+      }
       const localCurrency=String(route.data.currency_code||guide.budget.currency||"").toUpperCase();
       const homeCurrency=String(trip.cur||"INR").toUpperCase();
       const fxRate=await fxRatePromise;
