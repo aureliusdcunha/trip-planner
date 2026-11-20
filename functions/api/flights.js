@@ -53,11 +53,12 @@ function mapFlight(item,segment,cabin,currency,sourceUrl){
  const layovers=Array.isArray(item.layovers)?item.layovers:[];
  const stopCount=Math.max(0,legs.length-1);
  const layoverText=layovers.map(x=>(x.id||x.name||"Layover")+(x.duration?" ("+duration(x.duration)+")":"")).join(" · ");
+ const layoverMinutes=layovers.reduce((sum,x)=>sum+(Number(x.duration)||0),0);
  const features=[...(item.extensions||[]),...legs.flatMap(x=>x.extensions||[])];
- const flightLegs=legs.map(leg=>({from:leg.departure_airport?.id||leg.departure_airport?.name||"",to:leg.arrival_airport?.id||leg.arrival_airport?.name||"",departure:formatTime(leg.departure_airport?.time),arrival:formatTime(leg.arrival_airport?.time),flight_number:leg.flight_number||"",airline:leg.airline||""}));
+ const flightLegs=legs.map(leg=>({from:leg.departure_airport?.id||leg.departure_airport?.name||"",to:leg.arrival_airport?.id||leg.arrival_airport?.name||"",from_name:leg.departure_airport?.name||"",to_name:leg.arrival_airport?.name||"",from_country:leg.departure_airport?.country||leg.departure_airport?.country_name||"",to_country:leg.arrival_airport?.country||leg.arrival_airport?.country_name||"",departure:formatTime(leg.departure_airport?.time),arrival:formatTime(leg.arrival_airport?.time),flight_number:leg.flight_number||"",airline:leg.airline||""}));
  return {
   segment,airlines:airlines.join(" / ")||"Airline not specified",cabin_class:cabin,
-  route,flight_number:numbers.join(" + "),flight_legs:flightLegs,
+  route,flight_number:numbers.join(" + "),flight_legs:flightLegs,layover_minutes:layoverMinutes,
   departure:formatTime(first.departure_airport?.time),arrival:formatTime(last.arrival_airport?.time),
   duration:duration(item.total_duration||legs.reduce((n,x)=>n+(Number(x.duration)||0),0)),
   stops:String(stopCount),layovers:layoverText,
