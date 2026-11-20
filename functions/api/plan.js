@@ -256,8 +256,17 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    });
   }catch(err){
    releaseRequestSlot(requestGate);
-   if(attempt<11&&err?.name!=="TimeoutError"&&retryBudget.remaining>0){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
-   throw new Error(label+": "+(err?.name==="TimeoutError"?"AI request timed out after 110 seconds.":"Could not connect to Gemini Interactions API."));
+   if(err?.name==="TimeoutError"){
+    const next=advanceModel(modelState,model);
+    if(next){
+     modelState.switched=true;
+     send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"The current AI model took too long to respond. Switching to "+next+" so this research can continue."});
+     continue;
+    }
+    throw new Error(label+": all configured AI models timed out after 110 seconds per attempt.");
+   }
+   if(attempt<11&&retryBudget.remaining>0){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
+   throw new Error(label+": Could not connect to Gemini Interactions API.");
   }
   if(response.status===429){
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
