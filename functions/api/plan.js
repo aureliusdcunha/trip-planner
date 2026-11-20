@@ -485,6 +485,7 @@ export async function onRequestPost({request,env}){
        combined.research.flight_refresh_source_count=freshFlight.sources.length;
        combined.research.flight_refreshed_at=new Date().toISOString();
        emit({type:"agent_completed",agent:"Flight researcher",completed:1,total:1,sourceCount:freshFlight.sources.length,searchCount:freshFlight.queries.length});
+       combined.cache={hit:true,createdAt:cachedTrip.createdAt,flightsRefreshed:true};
        emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt});
        return;
       }
@@ -608,6 +609,7 @@ export async function onRequestPost({request,env}){
       cacheReport.getting_there="";
       cacheReport.research_sources=(cacheReport.research_sources||[]).filter(x=>x.agent!=="Flight researcher");
       const cacheSaved=await writeTripReportCache(env,cacheKey,cacheInput,cacheReport);
+      combined.cache={hit:false,saved:cacheSaved,flightsRefreshed:true};
       emit({type:"result",data:combined,cacheHit:false,cacheSaved});
      }catch(err){
       console.error("Trip Planner agent orchestration failed:",err?.stack||err);
