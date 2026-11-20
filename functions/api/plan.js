@@ -611,7 +611,7 @@ export async function onRequestPost({request,env}){
       cacheReport.getting_there="";
       cacheReport.research_sources=(cacheReport.research_sources||[]).filter(x=>x.agent!=="Flight researcher");
       const cacheSaved=await writeTripReportCache(env,cacheKey,cacheInput,cacheReport);
-      combined.cache={hit:false,saved:cacheSaved,flightsRefreshed:true};
+      combined.cache={hit:false,saved:cacheSaved,flightsRefreshed:true,refreshed:forceRefresh};
       emit({type:"result",data:combined,cacheHit:false,cacheSaved});
      }catch(err){
       console.error("Trip Planner agent orchestration failed:",err?.stack||err);
