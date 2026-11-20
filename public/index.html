@@ -486,18 +486,19 @@ async function requestItinerary(payload){
   const consume=frame=>{
    const lines=frame.split(/\r?\n/),line=lines.find(x=>x.startsWith('data:'));if(!line)return;
    let msg;try{msg=JSON.parse(line.slice(5).trim())}catch{return}
-   if(msg.type==='progress'||msg.type==='stage')$('status').textContent=msg.message||'Travel researchers are working…';
-   else if(msg.type==='heartbeat')$('status').textContent=msg.message||'Research is still running; connection is active.';
-   else if(msg.type==='agent_started')$('status').textContent='Research agent started · '+msg.agent;
-   else if(msg.type==='agent_search')$('status').textContent='Searching the web · '+msg.agent+' · '+msg.query;
-   else if(msg.type==='agent_retry')$('status').textContent=msg.agent+' · '+msg.message;
-   else if(msg.type==='model_fallback')$('status').textContent=msg.message+(msg.searchDisabled?' Live Google Search will be skipped for the fallback model on this free-tier project.':'');
-   else if(msg.type==='model_wait')$('status').textContent=msg.message||('Rate limit reached. Pausing researchers for '+msg.seconds+' seconds before retrying '+msg.model+'.');
-   else if(msg.type==='model_notice')$('status').textContent=msg.message;
-   else if(msg.type==='agent_failed')$('status').textContent='Research task failed · '+msg.agent+' · '+msg.error;
-   else if(msg.type==='agent_completed')$('status').textContent='Completed '+msg.completed+' of '+msg.total+' tasks · '+msg.agent;
+   const friendly=raw=>{const e=String(raw||'').toLowerCase();if(/429|quota|rate.?limit|resource_exhausted/.test(e))return 'A research service is temporarily busy. We are trying another way to complete this part of your trip.';if(/503|502|504|overload|high demand|capacity|unavailable|temporar/.test(e))return 'This research source is receiving heavy traffic. We are checking other available sources while the rest of your trip research continues.';if(/timeout|timed out|aborted|stream interrupted|network error/.test(e))return 'This search is taking longer than expected. We are refreshing the results; please retry if it does not complete.';if(/incomplete|invalid json|structured response/.test(e))return 'The travel research returned an incomplete result. We are rebuilding this section.';return 'We could not complete this research section. Please retry in a moment.'};
+   if(msg.type==='progress'||msg.type==='stage')$('status').textContent=msg.message||'Finding useful travel options, local highlights and practical details…';
+   else if(msg.type==='heartbeat')$('status').textContent='Still researching your trip — comparing destinations, travel times and useful local details…';
+   else if(msg.type==='agent_started')$('status').textContent='Researching '+msg.agent.replace(/researcher|architect|planner/ig,'travel options')+'…';
+   else if(msg.type==='agent_search')$('status').textContent='Checking travel information and current recommendations…';
+   else if(msg.type==='agent_retry')$('status').textContent=msg.agent+' · '+friendly(msg.message);
+   else if(msg.type==='model_fallback'||msg.type==='model_wait')$('status').textContent='One research source is busy. Switching approach while we continue gathering your travel information…';
+   else if(msg.type==='model_notice')$('status').textContent='Some live information may be limited, so we are clearly marking estimates and continuing with details we can verify.';
+   else if(msg.type==='flight_ranking')$('status').textContent=msg.message||'Comparing flight prices, journey times and stopovers…';
+   else if(msg.type==='agent_failed')$('status').textContent=msg.agent+' · '+friendly(msg.error);
+   else if(msg.type==='agent_completed')$('status').textContent='Completed '+msg.completed+' of '+msg.total+' research tasks · '+msg.agent;
    else if(msg.type==='result')data=msg.data;
-   else if(msg.type==='error')failure=msg.error||'The travel research team could not complete the plan.';
+   else if(msg.type==='error')failure=friendly(msg.error);
   };
   try{
    while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();frames.forEach(consume)}
