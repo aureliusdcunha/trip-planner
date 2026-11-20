@@ -467,6 +467,7 @@ export async function onRequestPost({request,env}){
        const allowed=["flights","stay","attractions","dining","transport","day"];
        if(!allowed.includes(kind))throw new Error("This section cannot be retried independently.");
        const report=JSON.parse(JSON.stringify(cachedTrip.report));
+       report.request_context={trip,useSearch,maxBases};
        const area=report.areas?.find(x=>x.name===areaName);
        const label=kind==="day"?"Day planner · "+date:kind==="transport"?"Transport researcher":kind==="flights"?"Flight researcher":kind+" researcher · "+areaName;
        const ctx={trip,useSearch,areas:report.areas||[],area,label,date,dayNumber:(report.days||[]).findIndex(x=>x.date===date)+1,base:(report.days||[]).find(x=>x.date===date)?.base||""};
@@ -487,6 +488,7 @@ export async function onRequestPost({request,env}){
        emit({type:"stage",stage:"cache",message:"Found a matching trip report. Reusing the saved itinerary and refreshing flight research…",agentTotal:1,cacheHit:true});
        emit({type:"agent_started",agent:"Flight researcher",completed:0,total:1});
        let combined=JSON.parse(JSON.stringify(cachedTrip.report));
+       combined.request_context={trip,useSearch,maxBases};
        let freshFlight=null;
        try{freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher"},env,emit,retryBudget,modelState,requestBudget,requestGate)}
        catch(error){combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];}
@@ -653,6 +655,7 @@ export async function onRequestPost({request,env}){
        combined.caveats.push("Some sections are temporarily unavailable. Use the section-specific Try again controls to refresh only those results.");
        emit({type:"agent_notice",message:unavailable.length+" section(s) are temporarily unavailable. The rest of your trip research is ready."});
       }
+      combined.request_context={trip,useSearch,maxBases};
       const cacheReport=JSON.parse(JSON.stringify(combined));
       cacheReport.flight_options=[];
       cacheReport.getting_there="";
