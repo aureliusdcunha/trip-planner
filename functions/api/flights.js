@@ -54,9 +54,10 @@ function mapFlight(item,segment,cabin,currency,sourceUrl){
  const stopCount=Math.max(0,legs.length-1);
  const layoverText=layovers.map(x=>(x.id||x.name||"Layover")+(x.duration?" ("+duration(x.duration)+")":"")).join(" · ");
  const features=[...(item.extensions||[]),...legs.flatMap(x=>x.extensions||[])];
+ const flightLegs=legs.map(leg=>({from:leg.departure_airport?.id||leg.departure_airport?.name||"",to:leg.arrival_airport?.id||leg.arrival_airport?.name||"",departure:formatTime(leg.departure_airport?.time),arrival:formatTime(leg.arrival_airport?.time),flight_number:leg.flight_number||"",airline:leg.airline||""}));
  return {
   segment,airlines:airlines.join(" / ")||"Airline not specified",cabin_class:cabin,
-  route,flight_number:numbers.join(" + "),
+  route,flight_number:numbers.join(" + "),flight_legs:flightLegs,
   departure:formatTime(first.departure_airport?.time),arrival:formatTime(last.arrival_airport?.time),
   duration:duration(item.total_duration||legs.reduce((n,x)=>n+(Number(x.duration)||0),0)),
   stops:String(stopCount),layovers:layoverText,
