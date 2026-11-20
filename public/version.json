@@ -1,5 +1,5 @@
 {
-  "version": "1.7.5",
+  "version": "1.7.6",
   "released": "2026-11-20",
-  "releaseName": "Cache notice and controlled full refresh"
+  "releaseName": "AI timeout fallback for itinerary research"
 }
