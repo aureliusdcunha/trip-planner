@@ -212,7 +212,10 @@ async function rankFlightOptionsWithWorkersAI(options,env){
   const messages=[
    {role:"system",content:"Rank flight options for a traveller. Return only valid JSON: {\"outbound\":[ids in best-first order],\"return\":[ids in best-first order],\"other\":[ids in best-first order]}. Never invent, alter or remove options. Prefer reasonable total fare, shorter journey, fewer stops and shorter layovers; consider baggage and schedule. Rank each segment separately."},
    {role:"user",content:JSON.stringify(compact)}
-  ],max_completion_tokens:900,chat_template_kwargs:{enable_thinking:false}});
+  ];
+  const guarded=await runWorkersAIWithQuota(env,"@cf/zai-org/glm-4.7-flash",messages,{messages,max_completion_tokens:900,chat_template_kwargs:{enable_thinking:false}},900);
+  if(!guarded.allowed)return {options,used:false};
+  const result=guarded.result;
   const raw=typeof result?.response==="string"?result.response:typeof result?.result==="string"?result.result:Array.isArray(result?.choices)?result.choices[0]?.message?.content:result?.output_text;
   const parsed=JSON.parse(String(raw||"").replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim());
   const ids=[...new Set(["outbound","return","other"].flatMap(k=>Array.isArray(parsed[k])?parsed[k]:[]).filter(i=>Number.isInteger(i)&&i>=0&&i<candidates.length))];
