@@ -430,7 +430,8 @@ export async function onRequestPost({request,env}){
   const maxBases=Math.min(4,Math.max(1,Math.ceil(Math.max(1,dayCount-1)/2)));
   const cacheInput={trip,useSearch,maxBases};
   const cacheKey=await makeTripCacheKey(cacheInput);
-  const cachedTrip=await readTripReportCache(env,cacheKey);
+  const forceRefresh=b.forceRefresh===true;
+  const cachedTrip=forceRefresh?null:await readTripReportCache(env,cacheKey);
   const heartbeat=new TextEncoder();
   let cancelled=false,heartbeatTimer=null,deadlineTimer=null;
   const stream=new ReadableStream({
@@ -489,6 +490,7 @@ export async function onRequestPost({request,env}){
        emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt});
        return;
       }
+      if(forceRefresh)emit({type:"stage",stage:"cache_refresh",message:"Refreshing all trip research as requested…",agentTotal:0,cacheRefresh:true});
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
