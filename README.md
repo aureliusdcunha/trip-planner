@@ -59,8 +59,8 @@ The chatbot uses a server-side provider chain. Cloudflare Workers AI is the defa
 To enable it for the Pages project:
 
 1. Open **Workers & Pages → your TripPlanner Pages project → Settings**.
-2. Under the **Production** environment, open **Bindings → Add → Workers AI**.
-3. Set **Variable name** to exactly `AI`, save, and repeat for **Preview** if you want preview deployments to use it.
+2. The repository's `wrangler.toml` declares the Pages Functions Workers AI binding as `[ai]` with `binding = "AI"`. If the dashboard's **Bindings → Add** control is available, you can alternatively create the same binding there. Do not create a separate Worker.
+3. Ensure the Pages project is deploying with this Wrangler configuration. If Cloudflare is not using the repository's Wrangler file as the Pages configuration, enable/download the Pages Wrangler configuration using Cloudflare's documented workflow, then add the AI binding there.
 4. Redeploy the Pages project so the binding is available to Functions.
 
 The chatbot's Cloudflare Workers AI call does not use Google Search grounding and therefore does not return verified live-search citations. It is suitable for general travel help and trip-context questions; time-sensitive facts must be checked against current official sources. Gemini remains in the fallback chain and can provide Google Search grounding when configured.
