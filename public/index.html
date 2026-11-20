@@ -537,6 +537,8 @@ $('tripForm').onsubmit=async ev=>{
  try{
   $('status').textContent=input.useSearch?'Starting the travel research team with live Google Search…':'Starting the travel research team…';
   const parsed=await requestItinerary(input);
+  if(parsed.cache?.hit)$('status').textContent='Loaded your saved trip research and refreshed current flight options.';
+  else if(parsed.cache?.saved)$('status').textContent='Trip research completed and saved for faster reuse next time.';
   const required=['flight_options','internal_transport','areas','highlights','dining','days','tips','caveats'];
   const dates=Array.from({length:n},(_,i)=>new Date(Date.parse(d1+'T00:00:00Z')+i*864e5).toISOString().slice(0,10));
   if(required.some(k=>!Array.isArray(parsed[k]))||parsed.days.length!==n||!parsed.budget||!parsed.practical||parsed.days.some((d,i)=>d.date!==dates[i]||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2))throw Error('The completed itinerary did not pass final validation. Please retry.');
