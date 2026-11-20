@@ -182,14 +182,24 @@ function renderContent(){
   const refreshQuota=el('button','btn secondary','Refresh quota');refreshQuota.type='button';
   const quotaRow=el('div','live-flight-panel');quotaRow.style.marginTop='8px';quotaRow.style.padding='10px 12px';
   const updateQuota=async()=>{
-   diagnostics.textContent='Checking SerpApi configuration and account usage…';
-   try{
-    const response=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'status'})});
-    const info=await response.json();trip.serpApiStatus=info;
-    if(!info.configured){diagnostics.textContent='Provider: SerpApi · API key: Not configured. Add SERPAPI_API_KEY in Cloudflare Pages secrets. Secondary providers are used automatically if SerpApi quota is exhausted.';return}
-    if(info.valid!==true){diagnostics.textContent='Provider: SerpApi · API key: Configured, but account check failed. '+(info.message||'Check the secret.');return}
-    diagnostics.textContent='Provider: SerpApi · API key: Valid · '+info.plan+' · Monthly usage: '+info.used+' / '+info.monthlyLimit+' · Remaining: '+info.remaining+(info.hourlyLimit?' · Hourly usage: '+info.hourlyUsed+' / '+info.hourlyLimit:'')+(info.renewalDate?' · Renews: '+info.renewalDate:'');
-   }catch(error){diagnostics.textContent='Provider: SerpApi · Could not check configuration or quota. '+(error.message||'Network error.')}
+   diagnostics.textContent='Checking provider and daily AI usage…';
+   const [serpResult,aiResult]=await Promise.allSettled([
+    fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'status'})}).then(r=>r.json()),
+    fetch('/api/quota',{cache:'no-store'}).then(r=>r.json())
+   ]);
+   const lines=[];
+   if(serpResult.status==='fulfilled'){
+    const info=serpResult.value;trip.serpApiStatus=info;
+    if(!info.configured)lines.push('SerpApi: API key not configured; fallback providers are used when available.');
+    else if(info.valid!==true)lines.push('SerpApi: Account check failed. '+(info.message||'Check the secret.'));
+    else lines.push('SerpApi: '+info.plan+' · Monthly '+info.used+' / '+info.monthlyLimit+' · Remaining '+info.remaining+(info.hourlyLimit?' · Hourly '+info.hourlyUsed+' / '+info.hourlyLimit:''));
+   }else lines.push('SerpApi: Could not check account usage.');
+   if(aiResult.status==='fulfilled'){
+    const q=aiResult.value;
+    if(q.configured)lines.push('Workers AI: '+q.used.toLocaleString()+' / '+q.limit.toLocaleString()+' estimated neurons reserved today (UTC) · Remaining '+q.remaining.toLocaleString()+' · Calls '+q.requests);
+    else lines.push('Workers AI: quota database unavailable; Workers AI is disabled until QUOTA_DB is available.');
+   }else lines.push('Workers AI: Could not check daily quota.');
+   diagnostics.textContent=lines.join(' | ');
   };
   refreshQuota.onclick=updateQuota;
   searchButton.onclick=async()=>{
