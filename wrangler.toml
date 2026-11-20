@@ -5,3 +5,7 @@ compatibility_date = "2025-01-01"
 [ai]
 binding = "AI"
 
+[[d1_databases]]
+binding = "QUOTA_DB"
+database_name = "tripplanner-quota"
+database_id = "aa7bb3dc-e4c3-471b-97f9-e1d6607d4193"
