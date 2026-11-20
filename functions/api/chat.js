@@ -1,3 +1,4 @@
+import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 // TripPlanner AI Assistant — provider-level failover across independently keyed AI services.
 const J=(o,s=200)=>new Response(JSON.stringify(o),{status:s,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
 const clip=(v,n)=>String(v??"").slice(0,n);
@@ -39,7 +40,7 @@ export async function onRequestPost({request,env}){
   const messages=[{role:"system",content:system},...history,{role:"user",content:message}];
   const input=[{role:"user",content:system},...history.map(x=>({role:x.role,content:x.content})),{role:"user",content:message}];
   const configured={
-   cloudflare:env.AI?{model:"@cf/zai-org/glm-4.7-flash"}:null,
+   cloudflare:env.AI&&env.QUOTA_DB?{model:"@cf/zai-org/glm-4.7-flash"}:null,
    gemini:env.GEMINI_API_KEY?{key:env.GEMINI_API_KEY,model:clip(env.MODEL||"gemini-3.8-flash",100)}:null,
    openai:env.OPENAI_API_KEY?{key:env.OPENAI_API_KEY,model:clip(env.OPENAI_CHAT_MODEL||"gpt-4.1-mini",100)}:null,
    groq:env.GROQ_API_KEY?{key:env.GROQ_API_KEY,model:clip(env.GROQ_CHAT_MODEL||"llama-3.3-70b-versatile",100)}:null,
@@ -55,7 +56,9 @@ export async function onRequestPost({request,env}){
    try{
     let result;
     if(provider==="cloudflare"){
-      const data=await env.AI.run(cfg.model,{messages,max_completion_tokens:1800,chat_template_kwargs:{enable_thinking:false}});
+      const guarded=await runWorkersAIWithQuota(env,cfg.model,messages,{messages,max_completion_tokens:1800,chat_template_kwargs:{enable_thinking:false}},1800);
+      if(!guarded.allowed)throw new Error("Workers AI skipped: daily neuron allowance unavailable or exhausted.");
+      const data=guarded.result;
       const answer=getText(data).trim();
       if(!answer)throw new Error("Cloudflare Workers AI returned an empty response.");
       result={answer,sources:[]};
