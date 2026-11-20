@@ -1,5 +1,5 @@
 {
-  "version": "1.6.2",
+  "version": "1.6.3",
   "released": "2026-11-20",
-  "releaseName": "Multi-provider AI failover"
+  "releaseName": "Cloudflare Workers AI chatbot provider"
 }
