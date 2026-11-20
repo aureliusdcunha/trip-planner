@@ -7,7 +7,7 @@
 .report-controls label{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .report-controls select{width:auto;min-width:150px;padding:8px 12px;border-color:var(--gold);font-weight:700}
 .report-controls span{font-size:11px;color:var(--muted)}.budget-style-select{width:auto;min-width:112px;padding:6px 9px;border:1px solid var(--gold);border-radius:8px;background:#fff;color:var(--ink);font-weight:700;font-size:12px}.budget-table td .budget-style-select{margin-left:10px;vertical-align:middle}
-.card.selected-budget{border:2px solid var(--gold);background:#fffaf0;box-shadow:0 2px 12px rgba(201,168,76,.15)}
+.flight-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}.flight-info-button{width:25px;height:25px;min-width:25px;border:1px solid #8aab94;border-radius:50%;background:#fff;color:#176b36;font-weight:800;cursor:pointer;line-height:1}.flight-info-note{font-size:12px;line-height:1.5;background:#fff;border:1px solid #cfe4d4;border-radius:8px;padding:10px;margin-top:10px}.flight-card-details{margin-top:10px;display:grid;gap:5px}.flight-card-flightline{display:flex;gap:18px;flex-wrap:wrap}.flight-card-field{display:flex;gap:6px;align-items:baseline}.flight-card-label,.flight-card-leg-type{font-size:11px;color:#66766a;font-weight:800;letter-spacing:.04em}.flight-card-field strong{font-size:13px}.flight-card-leg{display:flex;gap:12px;align-items:flex-start;padding-top:5px;border-top:1px solid #d8e9dc}.flight-card-leg-type{min-width:28px;color:#176b36}.flight-card-leg-main{font-size:13px;font-weight:600}.flight-card-stops{font-size:12px;color:#526357}.card.selected-budget{border:2px solid var(--gold);background:#fffaf0;box-shadow:0 2px 12px rgba(201,168,76,.15)}
 .city-block{margin:20px 0 26px}
 .city-header{display:flex;align-items:center;gap:14px;padding:16px 20px;margin-bottom:12px;background:linear-gradient(135deg,var(--ink) 0%,#3D2010 100%);border-radius:12px;position:relative;overflow:hidden;color:#fff}
 .city-header:after{content:'';position:absolute;right:-20px;top:50%;transform:translateY(-50%);width:120px;height:120px;background:radial-gradient(circle,rgba(201,168,76,.15),transparent 70%)}
@@ -238,29 +238,39 @@ function renderContent(){
   stopsSelect.onchange=()=>{trip.flightFilters=trip.flightFilters||{};trip.flightFilters.stops=stopsSelect.value;renderContent()};
   stops.append(stopsSelect);filters.append(cabin,stops);s.append(filters);root.append(s);
   const seenFlightCards=new Set();
-  const options=(trip.flight_options||[]).map((f,index)=>({...f,_index:index})).filter(f=>{
-   if(trip.flightFallbackMode&&f.live_fare)return false;
-   if(!f.live_fare)return true;
-   const key=[f.segment,f.cabin_class,f.route,f.flight_number].map(x=>String(x||'').toLowerCase().replace(/\s+/g,'')).join('|');
-   if(!key.replace(/\|/g,''))return true;
-   if(seenFlightCards.has(key))return false;
-   seenFlightCards.add(key);return true;
-  });
-  const cabinMatch=f=>{const wanted=trip.flightFilters?.cabin||'Any';return wanted==='Any'||String(f.cabin_class||'').toLowerCase().includes(wanted.toLowerCase())};
-  const stopCount=f=>{const value=String(f.stops||'').toLowerCase();if(/non.?stop|direct/.test(value))return 0;const m=value.match(/(\d+)/);return m?Number(m[1]):null};
-  const stopMatch=f=>{const wanted=trip.flightFilters?.stops||'Any';if(wanted==='Any')return true;const count=stopCount(f);if(count===null)return false;return wanted==='3'?count>=3:count===Number(wanted)};
-  const filtered=options.filter(f=>cabinMatch(f)&&stopMatch(f));
+  const cabinWanted=String(trip.flightFilters?.cabin??trip.requestedCabin??'Any').trim().toLowerCase();
+   const stopsWanted=String(trip.flightFilters?.stops??trip.requestedStops??'Any').trim().toLowerCase();
+   const options=(trip.flight_options||[]).map((f,index)=>({...f,_index:index})).filter(f=>{
+    if(trip.flightFallbackMode&&f.live_fare)return false;
+    const key=[f.segment,f.cabin_class,f.route,f.flight_number].map(x=>String(x||'').toLowerCase().replace(/\s+/g,'')).join('|');
+    if(!key.replace(/\|/g,''))return true;
+    if(seenFlightCards.has(key))return false;seenFlightCards.add(key);return true;
+   });
+   const cabinMatch=f=>{if(!cabinWanted||cabinWanted==='any')return true;const actual=String(f.cabin_class||'').toLowerCase().replace(/[^a-z]/g,''),wanted=cabinWanted.replace(/[^a-z]/g,'');return actual===wanted||actual.includes(wanted)||wanted.includes(actual)};
+   const stopCount=f=>{const value=String(f.stops??'').trim().toLowerCase();if(/non.?stop|direct/.test(value))return 0;const m=value.match(/\d+/);return m?Number(m[0]):null};
+   const stopMatch=f=>{if(!stopsWanted||stopsWanted==='any')return true;const count=stopCount(f);if(count===null)return false;return stopsWanted==='3'?count>=3:count===Number(stopsWanted)};
+   const filtered=options.filter(f=>cabinMatch(f)&&stopMatch(f));
   [['outbound','Outbound flights'],['return','Return flights'],['alternative','Alternative routes'],['domestic','Domestic flights']].forEach(([segment,label])=>{
    const list=filtered.filter(f=>String(f.segment||'').toLowerCase()===segment);if(!list.length)return;
    const block=heading(label,segment==='alternative'?'Alternative routes are not added to the round-trip budget.':'Select the option that best suits your schedule and budget.');
    const grid=el('div','grid');
    list.forEach(f=>{
-    const meta=[f.cabin_class||'Cabin not specified',f.route,f.flight_number?'Flight '+f.flight_number:'',f.departure,f.arrival,f.duration,'Stops: '+(f.stops??'Not specified'),f.layovers?'Layover: '+f.layovers:'',f.baggage].filter(Boolean).join(' · ');
-    const desc=[f.fare_notes,f.live_fare?'Price source: '+(f.price_source||trip.liveFlightProvider||'live provider')+' · indicative only. No booking is available in TripPlanner.':f.booking_advice].filter(Boolean).join(' ');
-    const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / '+(f.live_fare?'adult':'passenger')+' · one-way':'Fare unavailable · verify with airline';
-    const c=card((f.airlines||'Suggested flight')+(f.segment?' · '+f.segment:''),desc,meta,fareLabel,f.live_fare?f.source_url:f.booking_url);
-    if(f.live_fare)c.classList.add('live-flight-card');
-    c.prepend(el('div','pill',f.live_fare?'Live '+(f.price_source||trip.liveFlightProvider||'provider')+' price':'Original AI estimate'));
+    const meta=[f.cabin_class||'Cabin not specified',f.duration].filter(Boolean).join(' · ');
+     const fareLabel=f.price_unverified?'Fare requires verification · excluded from budget':Number(f.price_estimate)>0?money(f.price_estimate,local)+' / '+(f.live_fare?'adult':'passenger')+' · one-way':'Fare unavailable · verify with airline';
+     const c=card((f.airlines||'Suggested flight'),f.live_fare?'':(f.fare_notes||f.booking_advice||''),meta,fareLabel,f.live_fare?f.source_url:f.booking_url);
+     if(f.live_fare){
+      c.classList.add('live-flight-card');
+      const info=el('button','flight-info-button','i');info.type='button';info.setAttribute('aria-label','Fare information');info.title='Show fare information';
+      const infoText='Indicative Google Flights price for one adult, one-way. Child fares are estimated at the adult fare and lap infants at 10% for trip-budget planning; the provider does not supply a passenger-type breakdown here. Price source: Google Flights via SerpApi · indicative only. No booking is available in TripPlanner.';
+      const note=el('p','flight-info-note',infoText);note.hidden=true;info.onclick=()=>{note.hidden=!note.hidden;info.setAttribute('aria-expanded',String(!note.hidden))};
+      const top=el('div','flight-card-top');top.append(el('div','pill','Google Flights · indicative'),info);c.prepend(top);
+      const details=el('div','flight-card-details'),flightLine=el('div','flight-card-flightline');
+      [['Flight no',f.flight_number||'Not provided'],['Class',f.cabin_class||'Not specified']].forEach(([label,value])=>{const item=el('div','flight-card-field');item.append(el('span','flight-card-label',label),el('strong','',value));flightLine.append(item)});details.append(flightLine);
+      const legs=Array.isArray(f.flight_legs)?f.flight_legs:[];
+      if(legs.length){legs.forEach(leg=>{const brd=el('div','flight-card-leg');brd.append(el('span','flight-card-leg-type','BRD'),el('div','flight-card-leg-main',String(leg.from||'—')+'  '+String(leg.departure||'')));details.append(brd);const off=el('div','flight-card-leg');off.append(el('span','flight-card-leg-type','OFF'),el('div','flight-card-leg-main',String(leg.to||'—')+'  '+String(leg.arrival||'')));details.append(off)})}
+      else [['BRD',f.route?String(f.route).split(' · ')[0]:'',f.departure],['OFF',f.route?String(f.route).split(' · ').slice(-1)[0]:'',f.arrival]].forEach(([kind,place,time])=>{const row=el('div','flight-card-leg');row.append(el('span','flight-card-leg-type',kind),el('div','flight-card-leg-main',String(place||'—')+'  '+String(time||'')));details.append(row)});
+      details.append(el('div','flight-card-stops','Stops: '+(f.stops??'Not specified')));c.append(details,note);
+     }else c.prepend(el('div','pill','Original AI estimate'));
     if((segment==='outbound'||segment==='return')&&!f.price_unverified&&positiveNumber(f.price_estimate)>0){
      const chosen=trip.selectedFlights?.[segment]===f._index||trip.liveSelectedFlights?.[segment]===f._index;
      const button=el('button','btn'+(chosen?'':' secondary'),chosen?'Selected for '+segment:'Select this flight');
