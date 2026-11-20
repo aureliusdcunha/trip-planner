@@ -1,4 +1,5 @@
 import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
+import { makeTripCacheKey, readTripReportCache, writeTripReportCache } from "../lib/trip-cache.js";
 // Cloudflare Pages Function: POST /api/plan
 // Parallel travel-research specialists orchestrated by one streamed request.
 // Each specialist returns a bounded JSON object; route -> research -> day planners.
@@ -427,6 +428,9 @@ export async function onRequestPost({request,env}){
   const trip={dest,d1,d2,days:dayCount,pax,adults,children,infants,childAges,bud:clip(b.bud,20)||"Mid-range",cur:clip(b.cur,5)||"INR",from:clip(b.from,60)||"Mumbai",int:clip(b.int,250),includeShopping:b.includeShopping!==false,zeroDaysWasted:b.zeroDaysWasted===true};
   const useSearch=b.useSearch===true;
   const maxBases=Math.min(4,Math.max(1,Math.ceil(Math.max(1,dayCount-1)/2)));
+  const cacheInput={trip,useSearch,maxBases};
+  const cacheKey=await makeTripCacheKey(cacheInput);
+  const cachedTrip=await readTripReportCache(env,cacheKey);
   const heartbeat=new TextEncoder();
   let cancelled=false,heartbeatTimer=null,deadlineTimer=null;
   const stream=new ReadableStream({
@@ -448,6 +452,42 @@ export async function onRequestPost({request,env}){
       const retryBudget={remaining:7};
       const requestBudget={remaining:49};
       const requestGate=createRequestGate(2,4300);
+      if(cachedTrip?.report){
+       emit({type:"stage",stage:"cache",message:"Found a matching trip report. Reusing the saved itinerary and refreshing flight research…",agentTotal:1,cacheHit:true});
+       emit({type:"agent_started",agent:"Flight researcher",completed:0,total:1});
+       const freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher"},env,emit,retryBudget,modelState,requestBudget,requestGate);
+       let combined=JSON.parse(JSON.stringify(cachedTrip.report));
+       const flightResearch=freshFlight.data;
+       combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];
+       combined.getting_there=flightResearch.getting_there||"";
+       if(combined.flight_options.length){
+        const ranked=await rankFlightOptionsWithWorkersAI(combined.flight_options,env);
+        combined.flight_options=ranked.options;
+        emit({type:"flight_ranking",used:ranked.used,message:ranked.used?"Comparing freshly researched flight prices, journey times and stops…":"Keeping the freshly researched flight order."});
+       }
+       const fareCheck=validateFlightFareScale(flightResearch,combined.budget,null,trip.cur);
+       if(fareCheck.invalid){
+        combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
+        combined.caveats.push(fareCheck.invalid+" freshly researched flight fare option(s) failed the currency-scale check and were excluded from the trip budget.");
+        if(!fareCheck.roundTripUsable){
+         combined.budget.international_flight_per_person=0;
+         combined.budget.international_flight_adult=0;
+         combined.budget.international_flight_child=0;
+         combined.budget.international_flight_infant=0;
+        }
+       }
+       const retainedSources=(combined.research_sources||[]).filter(x=>x.agent!=="Flight researcher");
+       const freshSources=(freshFlight.sources||[]).map(x=>({...x,agent:"Flight researcher"}));
+       combined.research_sources=sourceUnique([...retainedSources,...freshSources]);
+       combined.research=combined.research||{};
+       combined.research.flight_refresh_model=freshFlight.model;
+       combined.research.flight_refresh_search_queries=freshFlight.queries.length;
+       combined.research.flight_refresh_source_count=freshFlight.sources.length;
+       combined.research.flight_refreshed_at=new Date().toISOString();
+       emit({type:"agent_completed",agent:"Flight researcher",completed:1,total:1,sourceCount:freshFlight.sources.length,searchCount:freshFlight.queries.length});
+       emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt});
+       return;
+      }
       // Route, flight and practical/budget research are independent and start together.
       const openingTasks=[
        {kind:"route",label:"Route architect"},
@@ -563,7 +603,12 @@ export async function onRequestPost({request,env}){
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
       if(combined.areas.some(a=>!Array.isArray(a.hotel_options)||!a.hotel_options.length))throw new Error("At least one stay researcher did not return suitable hotel options.");
       if(combined.days.some((d,i)=>d.date!==dayDates[i]||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2))throw new Error("One or more day planners returned an incomplete daily plan.");
-      emit({type:"result",data:combined});
+      const cacheReport=JSON.parse(JSON.stringify(combined));
+      cacheReport.flight_options=[];
+      cacheReport.getting_there="";
+      cacheReport.research_sources=(cacheReport.research_sources||[]).filter(x=>x.agent!=="Flight researcher");
+      const cacheSaved=await writeTripReportCache(env,cacheKey,cacheInput,cacheReport);
+      emit({type:"result",data:combined,cacheHit:false,cacheSaved});
      }catch(err){
       console.error("Trip Planner agent orchestration failed:",err?.stack||err);
       emit({type:"error",error:err?.message||"One or more travel researchers could not complete the plan."});
