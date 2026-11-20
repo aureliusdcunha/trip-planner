@@ -52,6 +52,21 @@ All model price fields are returned in destination-local currency. The Worker fe
 
 The report follows the structure of the supplied static family itinerary reference: outbound/return flight recommendations, domestic connections where relevant, budget/mid-range/splurge hotel options for each base, family-oriented daily schedules, attraction price comparisons, dining ideas, shopping guide, practical family tips and a smart-mix budget strategy. Destination-specific properties and recommendations are researched per trip; static Thailand names or prices are not copied into other destinations.
 
+### Chat assistant AI providers
+
+The chatbot uses a server-side provider chain. Cloudflare Workers AI is the default first provider when the Pages project has an AI binding named `AI`; if the binding is absent or a request fails, the function continues to the configured external providers. The Cloudflare model is pinned in code to `@cf/zai-org/glm-4.7-flash` rather than accepting a dashboard-supplied model override. It uses the Workers AI binding directly and needs no separate Cloudflare API key.
+
+To enable it for the Pages project:
+
+1. Open **Workers & Pages → your TripPlanner Pages project → Settings**.
+2. Under the **Production** environment, open **Bindings → Add → Workers AI**.
+3. Set **Variable name** to exactly `AI`, save, and repeat for **Preview** if you want preview deployments to use it.
+4. Redeploy the Pages project so the binding is available to Functions.
+
+The chatbot's Cloudflare Workers AI call does not use Google Search grounding and therefore does not return verified live-search citations. It is suitable for general travel help and trip-context questions; time-sensitive facts must be checked against current official sources. Gemini remains in the fallback chain and can provide Google Search grounding when configured.
+
+**Usage and cost:** Workers AI has a daily included Free allocation (currently 10,000 Neurons/day). Usage beyond the included allocation depends on the Cloudflare Workers plan and billing settings; Free-plan requests stop after the daily allocation, while Paid-plan overages may be billed. Check the current [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/) before enabling production traffic. Do not assume all models have identical free-tier eligibility. The chatbot pins the model above and does not route through AI Gateway or a third-party paid model as part of the Cloudflare provider.
+
 ## Project structure
 
 - `public/index.html`: browser interface, stream reader, report renderer and dynamic budget calculation
