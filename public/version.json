@@ -1,5 +1,5 @@
 {
-  "version": "1.7.12",
+  "version": "1.7.13",
   "released": "2026-11-21",
-  "releaseName": "Shared Gemini circuit breaker for parallel researchers"
+  "releaseName": "Restore full timeout for cached initial-report flight research"
 }
