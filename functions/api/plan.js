@@ -170,10 +170,17 @@ function promptFor(kind,ctx){
  return "";
 }
 function advanceModel(modelState,failedModel){
+ const health=modelState.health;
  const current=modelState.models[modelState.index];
  if(current===failedModel&&modelState.index<modelState.models.length-1)modelState.index++;
+ while(modelState.index<modelState.models.length&&health?.disabled?.has(modelState.models[modelState.index]))modelState.index++;
  const next=modelState.models[modelState.index];
- return next!==failedModel?next:null;
+ return next&&next!==failedModel?next:null;
+}
+function disableModelForRequest(modelState,model,reason){
+ if(!modelState.health) return;
+ modelState.health.disabled.add(model);
+ modelState.health.reasons.set(model,reason||"temporarily unavailable");
 }
 function createRequestGate(limit,spacingMs){return {limit,spacingMs,active:0,queue:[],nextStartAt:0,pauseUntil:0}}
 async function acquireRequestSlot(gate){
@@ -227,12 +234,14 @@ async function rankFlightOptionsWithWorkersAI(options,env){
 }
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
- const agentModelState={...modelState,index:0,switched:false,freeTier:modelState.freeTier,searchNoticeSent:false};
+ const agentModelState={...modelState,index:0,switched:false,freeTier:modelState.freeTier,searchNoticeSent:false,health:modelState.health};
  const agentDeadline=Date.now()+(Number(ctx.maxDurationMs)||150000);
  const outputLimits={route:1400,flights:2200,transport:1400,stay:2000,attractions:3400,dining:2400,guide:3200,day:4600};
  let maxOutputTokens=outputLimits[kind]||2000,incompleteRetryCount=0;
  let lastModel="",capacityRetriesForModel=0;
  for(let attempt=0;attempt<20;attempt++){
+  while(agentModelState.index<agentModelState.models.length&&agentModelState.health?.disabled?.has(agentModelState.models[agentModelState.index]))agentModelState.index++;
+  if(agentModelState.index>=agentModelState.models.length)throw new Error(label+": all configured Gemini models have been temporarily paused after rate-limit or overload responses from other researchers.");
   if(Date.now()>=agentDeadline)throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");
   await acquireRequestSlot(requestGate);
   if(Date.now()>=agentDeadline){releaseRequestSlot(requestGate);throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
@@ -276,6 +285,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
    releaseRequestSlot(requestGate);
    if(/free.?tier|FreeTier/i.test(details))agentModelState.freeTier=true;
+   disableModelForRequest(agentModelState,model,"HTTP 429 rate limit");
    // A rate-limited model is skipped immediately; do not stall every researcher on its cooldown.
    const next=advanceModel(agentModelState,model);
    if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Gemini rate-limited "+model+". Skipping it and switching to "+next+"."});continue}
@@ -286,6 +296,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    releaseRequestSlot(requestGate);
    const transient=[502,503,504].includes(response.status)||isCapacityError(details);
    if(transient){
+    disableModelForRequest(agentModelState,model,"HTTP "+response.status+" overload");
     // Do not spend a second long request on a provider already returning 502/503/504.
     const next=advanceModel(agentModelState,model);
     if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Model "+model+" is temporarily overloaded (HTTP "+response.status+"). Switching immediately to "+next+"."});continue}
@@ -345,6 +356,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
   }
   if(streamError){
    if(isCapacityError(streamError)){
+    disableModelForRequest(agentModelState,model,"stream capacity error");
     const next=advanceModel(agentModelState,model);
     if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Model "+model+" reported high demand. Switching immediately to "+next+"."});continue}
     throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please retry later. "+streamError);
@@ -453,7 +465,7 @@ export async function onRequestPost({request,env}){
       const configuredFallback=clip(env.FALLBACK_MODEL||"gemini-3.5-flash-lite",80);
       const tertiaryModel=clip(env.TERTIARY_MODEL||"gemini-3.1-flash-lite",80);
       const modelCandidates=[primaryModel,configuredFallback,tertiaryModel].filter((model,index,list)=>model&&list.indexOf(model)===index);
-      const modelState={primary:primaryModel,models:modelCandidates,index:0,switched:false,freeTier:false,searchNoticeSent:false};
+      const modelState={primary:primaryModel,models:modelCandidates,index:0,switched:false,freeTier:false,searchNoticeSent:false,health:{disabled:new Set(),reasons:new Map()}};
       const retryBudget={remaining:18};
       const requestBudget={remaining:90};
       const requestGate=createRequestGate(2,2500);
