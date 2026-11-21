@@ -669,7 +669,7 @@ $('tripForm').onsubmit=async ev=>{
   $('status').textContent=input.useSearch?'Starting the travel research team with live Google Search…':'Starting the travel research team…';
   const parsed=await requestItinerary(input);
   let cacheMessage='';
-  if(parsed.cache?.hit)cacheMessage='Loaded saved trip research from cache and refreshed current flight options.';
+  if(parsed.cache?.hit)cacheMessage=parsed.cache.flightsRefreshed?'Loaded saved trip research from cache and refreshed current flight options.':'Loaded saved trip research from cache; fresh flight research was temporarily unavailable, so use Try again in the Flights section.';
   else if(parsed.cache?.saved)cacheMessage=parsed.cache?.refreshed?'All trip research was refreshed and saved.':'Trip research completed and saved for faster reuse next time.';
   const required=['flight_options','internal_transport','areas','highlights','dining','days','tips','caveats'];
   const dates=Array.from({length:n},(_,i)=>new Date(Date.parse(d1+'T00:00:00Z')+i*864e5).toISOString().slice(0,10));
