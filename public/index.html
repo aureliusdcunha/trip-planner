@@ -196,6 +196,22 @@ table{border-collapse:collapse}
  #tripForm input,#tripForm select{font-size:11px;padding-left:6px;padding-right:6px}
  #tripForm input[type=date]{font-size:10px}
 }
+
+/* Research retry rows: prevent long provider errors and controls from widening the page */
+.retry-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0;width:100%;padding:9px 0;border-bottom:1px solid var(--line)}
+.retry-row:last-child{border-bottom:0}
+.retry-detail{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word;white-space:normal;font-size:13px;line-height:1.5}
+.retry-button{flex:0 0 auto;min-width:76px;max-width:100%;white-space:nowrap;word-break:normal;overflow-wrap:normal;padding:8px 11px;line-height:1.2}
+.retry-row.is-retrying .retry-detail{opacity:.65}
+.tabs{width:100%;max-width:100%;min-width:0;overscroll-behavior-x:contain;scrollbar-width:thin}
+#report,.wrap,.section{min-width:0;max-width:100%}
+@media(max-width:600px){
+ .retry-row{grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:10px 0}
+ .retry-detail{font-size:12px;line-height:1.4}
+ .retry-button{min-width:82px;padding:9px 8px;font-size:11px}
+ .section{overflow:hidden}
+ .tabs{overflow-x:auto;overflow-y:hidden;touch-action:pan-x}
+}
 </style></head><body><main class="wrap" id="wrap">
 <div class="brand-header"><a class="brand-logo" href="/" aria-label="TripPlanner home"><img src="/logo.svg" width="54" height="54" alt="TripPlanner logo"><span class="brand-wordmark">Trip<span>Planner</span></span></a><span class="brand-tagline">Thoughtfully planned journeys</span><span id="appVersion" class="version-tag" aria-label="Application version">v1.3.4</span></div><h1>Plan a journey worth remembering.</h1><p class="lead">A detailed travel report, thoughtfully organised around your route, dates, travellers and budget — from flight strategy and hotel choices to day-by-day experiences and a realistic cost plan.</p>
 <section class="formbox" id="tripFormBox"><form id="tripForm" class="formgrid">
@@ -313,15 +329,15 @@ function renderContent(){
   if((trip.research_unavailable||[]).length){
    const panel=section('Research temporarily unavailable','Other trip details are ready. Retry any missing section independently; successful results will remain unchanged.');
    (trip.research_unavailable||[]).forEach(item=>{
-    const row=el('div','retry-row');row.style.display='flex';row.style.alignItems='center';row.style.justifyContent='space-between';row.style.gap='12px';row.style.padding='8px 0';row.style.borderBottom='1px solid var(--line,#e5ddd0)';
+    const row=el('div','retry-row');
     const name=item.label||item.kind;
-    const detail=el('span','',name+(item.error?' · '+item.error:''));
-    const button=el('button','btn secondary','Try again');button.type='button';
+    const detail=el('div','retry-detail',name+(item.error?' · '+item.error:''));
+    const button=el('button','btn secondary retry-button','Try again');button.type='button';
     button.onclick=async()=>{
-     if(button.disabled)return;button.disabled=true;button.textContent='Retrying…';
+     if(button.disabled)return;button.disabled=true;button.textContent='Retrying…';row.classList.add('is-retrying');
      const saved=trip.request_context||{};
      const payload={...(saved.trip||{}),useSearch:saved.useSearch===true,retryOnly:{kind:item.kind,area:item.area||'',date:item.date||''}};
-     try{const updated=await requestItinerary(payload);trip=updated;render();}catch(error){button.disabled=false;button.textContent='Try again';detail.textContent=name+' · '+(error.message||'Retry failed.');}
+     try{const updated=await requestItinerary(payload);trip=updated;render();}catch(error){button.disabled=false;button.textContent='Try again';row.classList.remove('is-retrying');detail.textContent=name+' · '+(error.message||'Retry failed.');}
     };
     row.append(detail,button);panel.append(row);
    });
