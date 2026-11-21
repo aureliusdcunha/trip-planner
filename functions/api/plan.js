@@ -227,7 +227,7 @@ async function rankFlightOptionsWithWorkersAI(options,env){
 }
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
- const agentModelState={...modelState,index:0,switched:false,freeTier:agentModelState.freeTier,searchNoticeSent:false};
+ const agentModelState={...modelState,index:0,switched:false,freeTier:modelState.freeTier,searchNoticeSent:false};
  const agentDeadline=Date.now()+(Number(ctx.maxDurationMs)||150000);
  const outputLimits={route:1400,flights:2200,transport:1400,stay:2000,attractions:3400,dining:2400,guide:3200,day:4600};
  let maxOutputTokens=outputLimits[kind]||2000,incompleteRetryCount=0;
