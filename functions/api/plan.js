@@ -227,11 +227,14 @@ async function rankFlightOptionsWithWorkersAI(options,env){
 }
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
+ const agentDeadline=Date.now()+(Number(ctx.maxDurationMs)||150000);
  const outputLimits={route:1400,flights:2200,transport:1400,stay:2000,attractions:3400,dining:2400,guide:3200,day:4600};
  let maxOutputTokens=outputLimits[kind]||2000,incompleteRetryCount=0;
  let lastModel="",capacityRetriesForModel=0;
  for(let attempt=0;attempt<20;attempt++){
+  if(Date.now()>=agentDeadline)throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");
   await acquireRequestSlot(requestGate);
+  if(Date.now()>=agentDeadline){releaseRequestSlot(requestGate);throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
   const model=modelState.models[modelState.index];
   if(model!==lastModel){lastModel=model;capacityRetriesForModel=0}
   const modelIsFallback=modelState.index>0;
@@ -252,7 +255,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
   try{
    response=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{
     method:"POST",headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY,"Api-Revision":"2026-05-20"},
-    body:JSON.stringify(body),signal:AbortSignal.timeout(110000)
+    body:JSON.stringify(body),signal:AbortSignal.timeout(Math.max(1000,Math.min(45000,agentDeadline-Date.now())))
    });
   }catch(err){
    releaseRequestSlot(requestGate);
@@ -272,15 +275,10 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
    releaseRequestSlot(requestGate);
    if(/free.?tier|FreeTier/i.test(details))modelState.freeTier=true;
-   const cooldownSeconds=rateLimitCooldownSeconds(details);
-   if(cooldownSeconds){
-    requestGate.pauseUntil=Math.max(requestGate.pauseUntil,Date.now()+(cooldownSeconds+1)*1000);
-    send({type:"model_wait",agent:label,model,seconds:cooldownSeconds+1,message:"Gemini rate limit reached for "+model+". Pausing all researchers for about "+(cooldownSeconds+1)+" seconds, then retrying this model."});
-    continue;
-   }
+   // A rate-limited model is skipped immediately; do not stall every researcher on its cooldown.
    const next=advanceModel(modelState,model);
-   if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Quota/rate limit reached for "+model+". Switching to "+next+"."});continue}
-   throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details+" Wait for the quota reset or enable Gemini billing for higher limits.");
+   if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Gemini rate-limited "+model+". Skipping it and switching to "+next+"."});continue}
+   throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details);
   }
   if(!response.ok){
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
@@ -490,7 +488,7 @@ export async function onRequestPost({request,env}){
        let combined=JSON.parse(JSON.stringify(cachedTrip.report));
        combined.request_context={trip,useSearch,maxBases};
        let freshFlight=null;
-       try{freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher"},env,emit,retryBudget,modelState,requestBudget,requestGate)}
+       try{freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher",maxDurationMs:65000},env,emit,retryBudget,modelState,requestBudget,requestGate)}
        catch(error){combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];}
        const flightResearch=freshFlight?.data||{};
        if(freshFlight){combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];combined.getting_there=flightResearch.getting_there||"";combined.research_unavailable=(combined.research_unavailable||[]).filter(x=>x.kind!=="flights");}
