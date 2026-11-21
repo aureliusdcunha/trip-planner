@@ -488,7 +488,7 @@ export async function onRequestPost({request,env}){
        let combined=JSON.parse(JSON.stringify(cachedTrip.report));
        combined.request_context={trip,useSearch,maxBases};
        let freshFlight=null;
-       try{freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher",maxDurationMs:65000},env,emit,retryBudget,modelState,requestBudget,requestGate)}
+       try{freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher",maxDurationMs:30000},env,emit,retryBudget,modelState,requestBudget,requestGate)}
        catch(error){combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];}
        const flightResearch=freshFlight?.data||{};
        if(freshFlight){combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];combined.getting_there=flightResearch.getting_there||"";combined.research_unavailable=(combined.research_unavailable||[]).filter(x=>x.kind!=="flights");}
@@ -509,7 +509,7 @@ export async function onRequestPost({request,env}){
         }
        }
        const retainedSources=(combined.research_sources||[]).filter(x=>x.agent!=="Flight researcher");
-       const freshSources=(freshFlight.sources||[]).map(x=>({...x,agent:"Flight researcher"}));
+       const freshSources=(freshFlight?.sources||[]).map(x=>({...x,agent:"Flight researcher"}));
        combined.research_sources=sourceUnique([...retainedSources,...freshSources]);
        combined.research=combined.research||{};
        if(freshFlight){
