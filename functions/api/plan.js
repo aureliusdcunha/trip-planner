@@ -285,14 +285,9 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    releaseRequestSlot(requestGate);
    const transient=[502,503,504].includes(response.status)||isCapacityError(details);
    if(transient){
-    if(capacityRetriesForModel<1&&retryBudget.remaining>0&&attempt<11){
-     capacityRetriesForModel++;retryBudget.remaining--;
-     const delay=1000*Math.pow(2,capacityRetriesForModel-1);
-     send({type:"agent_retry",agent:label,message:"Gemini is temporarily overloaded (HTTP "+response.status+"); retrying after "+(delay/1000)+"s."});
-     await new Promise(resolve=>setTimeout(resolve,delay));continue;
-    }
+    // Do not spend a second long request on a provider already returning 502/503/504.
     const next=advanceModel(modelState,model);
-    if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Model "+model+" is temporarily overloaded. Switching to "+next+"."});continue}
+    if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Model "+model+" is temporarily overloaded (HTTP "+response.status+"). Switching immediately to "+next+"."});continue}
    }
    if(useSearch&&(response.status===400||response.status===403))throw new Error(label+": Gemini rejected the Google Search request (HTTP "+response.status+"). Search grounding may require an eligible billing-enabled project or the provider may have rejected the request configuration. "+details);
    if(transient)throw new Error(label+": all configured Gemini models are currently overloaded or unavailable. Please wait a few minutes and retry. Last response: HTTP "+response.status+". "+details);
@@ -337,21 +332,22 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
   finally{try{reader.releaseLock()}catch{}releaseRequestSlot(requestGate)}
   const canRetry=attempt<19&&retryBudget.remaining>0;
   if(readError){
+   // A broken/aborted stream is a provider failure: switch model before spending another retry on it.
+   const next=advanceModel(modelState,model);
+   if(next){
+    modelState.switched=true;
+    send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"The response from "+model+" was interrupted. Switching to "+next+" instead of retrying the same model."});
+    continue;
+   }
    if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response stream was interrupted; retrying once."});continue}
    throw new Error(label+": response stream interrupted: "+(readError?.message||"network error"));
   }
   if(streamError){
    if(isCapacityError(streamError)){
-    if(capacityRetriesForModel<1&&retryBudget.remaining>0&&attempt<19){
-     capacityRetriesForModel++;retryBudget.remaining--;
-     const delay=1000*Math.pow(2,capacityRetriesForModel-1);
-     send({type:"agent_retry",agent:label,message:"Gemini reports high demand; retrying after "+(delay/1000)+"s."});
-     await new Promise(resolve=>setTimeout(resolve,delay));continue;
-    }
     const next=advanceModel(modelState,model);
-    if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Model "+model+" remains overloaded. Switching to "+next+"."});continue}
+    if(next){modelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:modelState.freeTier,searchDisabled:!!(modelState.freeTier&&ctx.useSearch),message:"Model "+model+" reported high demand. Switching immediately to "+next+"."});continue}
+    throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please retry later. "+streamError);
    }
-   if(isCapacityError(streamError))throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please wait a few minutes and retry. "+streamError);
    throw new Error(label+": "+streamError);
   }
   let data=null,validationIssue="No structured JSON was returned.";
