@@ -255,7 +255,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
   try{
    response=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{
     method:"POST",headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY,"Api-Revision":"2026-05-20"},
-    body:JSON.stringify(body),signal:AbortSignal.timeout(Math.max(1000,Math.min(45000,agentDeadline-Date.now())))
+    body:JSON.stringify(body),signal:AbortSignal.timeout(Math.max(1000,Math.min(110000,agentDeadline-Date.now())))
    });
   }catch(err){
    releaseRequestSlot(requestGate);
