@@ -1,5 +1,5 @@
 {
-  "version": "1.7.10",
+  "version": "1.7.11",
   "released": "2026-11-21",
-  "releaseName": "Immediate AI provider failover for interrupted and overloaded research"
+  "releaseName": "Independent researcher failover and improved multi-agent capacity"
 }
