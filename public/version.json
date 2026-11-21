@@ -1,5 +1,5 @@
 {
-  "version": "1.7.11",
+  "version": "1.7.12",
   "released": "2026-11-21",
-  "releaseName": "Independent researcher failover and improved multi-agent capacity"
+  "releaseName": "Shared Gemini circuit breaker for parallel researchers"
 }
