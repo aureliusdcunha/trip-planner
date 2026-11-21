@@ -43,7 +43,121 @@
 .day-end{margin:12px 0 0;padding:10px 12px;background:#fbf7ef;border-radius:8px;font-size:11px;color:var(--muted)}
 .day-end strong{color:var(--ink)}
 @media(max-width:560px){.day-tags,.day-schedule{padding-left:14px}.day-num{width:48px}.schedule-item{grid-template-columns:54px minmax(0,1fr);gap:0 7px}.city-name{font-size:19px}.report-controls select{width:100%}} 
-.party-total{grid-column:span 2;display:flex;flex-direction:row;align-items:center;align-self:start;margin-top:16px;justify-content:flex-start;gap:8px;white-space:nowrap;height:38px;padding:7px 10px;border:1px solid #dfd3bb;border-radius:8px;background:#fff;color:var(--ink);font-size:13px;line-height:1.2}.party-total>span,.party-total output{display:inline;margin:0}.party-total output{font:600 13px Inter,'DM Sans',sans-serif;color:var(--ink)}.tp-chat-launcher{position:fixed;right:24px;bottom:22px;z-index:1000;border:0;border-radius:999px;background:#8b1a1a;color:#fff;padding:13px 19px;font:700 14px Inter, sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.22);cursor:pointer}.tp-chat-panel{position:fixed;right:24px;bottom:84px;width:min(390px,calc(100vw - 28px));height:min(590px,calc(100vh - 120px));z-index:1001;background:#fff;border:1px solid #e8ddc6;border-radius:18px;box-shadow:0 18px 55px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden}.tp-chat-panel[hidden]{display:none}.tp-chat-head{display:flex;align-items:center;gap:10px;padding:14px 16px;background:#8b1a1a;color:#fff}.tp-chat-head strong{font-size:15px}.tp-chat-head small{display:block;opacity:.85;font-size:11px}.tp-chat-close{margin-left:auto;border:0;background:transparent;color:#fff;font-size:22px;cursor:pointer}.tp-chat-mode{padding:7px 12px;background:#fbf6ec;color:#775d3c;font-size:11px;border-bottom:1px solid #eee5d6}.tp-chat-messages{padding:14px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:10px;background:#fffdf9}.tp-chat-msg{max-width:90%;padding:10px 12px;border-radius:13px;font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}.tp-chat-msg.bot{align-self:flex-start;background:#f4eee2;color:#281d12}.tp-chat-msg.user{align-self:flex-end;background:#8b1a1a;color:#fff}.tp-chat-sources{font-size:11px;margin-top:8px;display:flex;flex-direction:column;gap:4px}.tp-chat-sources a{color:#8b1a1a;text-decoration:underline}.tp-chat-compose{display:flex;gap:8px;padding:12px;border-top:1px solid #eee5d6}.tp-chat-compose textarea{flex:1;resize:none;min-height:42px;max-height:100px;border:1px solid #dfd3bb;border-radius:10px;padding:9px;font:13px Inter,sans-serif}.tp-chat-send{border:0;border-radius:10px;background:#8b1a1a;color:#fff;padding:0 15px;font-weight:700;cursor:pointer}.tp-chat-send:disabled{opacity:.5;cursor:wait}.tp-chat-hint{padding:0 12px 10px;color:#8a7a60;font-size:10px}@media(max-width:520px){.tp-chat-launcher{right:14px;bottom:14px}.tp-chat-panel{right:10px;bottom:72px;width:calc(100vw - 20px);height:min(72vh,620px)}}</style></head><body><main class="wrap" id="wrap">
+.party-total{grid-column:span 2;display:flex;flex-direction:row;align-items:center;align-self:start;margin-top:16px;justify-content:flex-start;gap:8px;white-space:nowrap;height:38px;padding:7px 10px;border:1px solid #dfd3bb;border-radius:8px;background:#fff;color:var(--ink);font-size:13px;line-height:1.2}.party-total>span,.party-total output{display:inline;margin:0}.party-total output{font:600 13px Inter,'DM Sans',sans-serif;color:var(--ink)}.tp-chat-launcher{position:fixed;right:24px;bottom:22px;z-index:1000;border:0;border-radius:999px;background:#8b1a1a;color:#fff;padding:13px 19px;font:700 14px Inter, sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.22);cursor:pointer}.tp-chat-panel{position:fixed;right:24px;bottom:84px;width:min(390px,calc(100vw - 28px));height:min(590px,calc(100vh - 120px));z-index:1001;background:#fff;border:1px solid #e8ddc6;border-radius:18px;box-shadow:0 18px 55px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden}.tp-chat-panel[hidden]{display:none}.tp-chat-head{display:flex;align-items:center;gap:10px;padding:14px 16px;background:#8b1a1a;color:#fff}.tp-chat-head strong{font-size:15px}.tp-chat-head small{display:block;opacity:.85;font-size:11px}.tp-chat-close{margin-left:auto;border:0;background:transparent;color:#fff;font-size:22px;cursor:pointer}.tp-chat-mode{padding:7px 12px;background:#fbf6ec;color:#775d3c;font-size:11px;border-bottom:1px solid #eee5d6}.tp-chat-messages{padding:14px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:10px;background:#fffdf9}.tp-chat-msg{max-width:90%;padding:10px 12px;border-radius:13px;font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}.tp-chat-msg.bot{align-self:flex-start;background:#f4eee2;color:#281d12}.tp-chat-msg.user{align-self:flex-end;background:#8b1a1a;color:#fff}.tp-chat-sources{font-size:11px;margin-top:8px;display:flex;flex-direction:column;gap:4px}.tp-chat-sources a{color:#8b1a1a;text-decoration:underline}.tp-chat-compose{display:flex;gap:8px;padding:12px;border-top:1px solid #eee5d6}.tp-chat-compose textarea{flex:1;resize:none;min-height:42px;max-height:100px;border:1px solid #dfd3bb;border-radius:10px;padding:9px;font:13px Inter,sans-serif}.tp-chat-send{border:0;border-radius:10px;background:#8b1a1a;color:#fff;padding:0 15px;font-weight:700;cursor:pointer}.tp-chat-send:disabled{opacity:.5;cursor:wait}.tp-chat-hint{padding:0 12px 10px;color:#8a7a60;font-size:10px}@media(max-width:520px){.tp-chat-launcher{right:14px;bottom:14px}.tp-chat-panel{right:10px;bottom:72px;width:calc(100vw - 20px);height:min(72vh,620px)}}
+/* Responsive layout: laptop, tablet and mobile */
+html{width:100%;max-width:100%;overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{width:100%;max-width:100%;overflow-x:hidden}
+.wrap{width:min(100%,1200px);min-width:0}
+#report,#content,.section,.formbox,.hero,.card{min-width:0;max-width:100%}
+#content>*{min-width:0;max-width:100%}
+img,svg,video,canvas{max-width:100%;height:auto}
+.grid>* ,.stats>* ,.formgrid>*{min-width:0}
+input,select,textarea,button{max-width:100%;font:inherit}
+input,select,textarea{min-width:0}
+.tabs{max-width:100%;overscroll-behavior-x:contain;scrollbar-width:thin}
+.tab{flex:0 0 auto}
+.section{overflow-wrap:anywhere}
+.section p,.card p,.muted,.meta{overflow-wrap:anywhere}
+.report-actions{min-width:0}
+.report-actions>*{min-width:0}
+table{border-collapse:collapse}
+.budget-table{min-width:620px;max-width:none}
+.budget-table,.experiences-table{font-size:clamp(11px,1.1vw,13px)}
+.experiences-table-wrap,.table-scroll,.budget-table-wrap{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.flight-card,.flight-card-details,.flight-card-leg-main{min-width:0;overflow-wrap:anywhere}
+.flight-card-flightline,.flight-card-leg{flex-wrap:wrap}
+.city-header,.day-header,.day-schedule{min-width:0}
+.day-title-wrap{overflow-wrap:anywhere}
+.day-tags{padding-left:16px}
+.day-schedule{padding-left:16px}
+@media(max-width:1024px){
+ .wrap{padding:20px 16px 48px}
+ .formgrid{grid-template-columns:repeat(6,minmax(0,1fr))}
+ .field.destination-field{grid-column:span 6}
+ .field.date-field{grid-column:span 3}
+ .field.span-2{grid-column:span 2}
+ .field.span-3{grid-column:span 3}
+ .field.span-4{grid-column:span 3}
+ .field.party-field{grid-column:span 2}
+ .field.party-total{grid-column:span 2}
+ .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+ .section{padding:18px}
+}
+@media(max-width:760px){
+ .wrap{padding:14px 12px 36px}
+ .brand-header{gap:8px}
+ .brand-logo img{width:42px;height:42px}
+ .brand-wordmark{font-size:21px}
+ .brand-tagline{font-size:9px;padding-left:8px}
+ .brand-header .version-tag{margin-left:0}
+ h1{font-size:clamp(1.9rem,7vw,2.7rem);overflow-wrap:anywhere}
+ h2{font-size:1.4rem}
+ .lead{font-size:14px}
+ .formbox{padding:12px}
+ .formgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .field.wide,.field.destination-field,.field.span-2,.field.span-3,.field.span-4{grid-column:1/-1}
+ .field.date-field,.field.party-field,.field.party-total{grid-column:span 1}
+ .checkbox-grid{grid-template-columns:1fr}
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .stat{padding:10px 6px}
+ .stat b{font-size:1.1rem}
+ .tabs{position:sticky;top:0;gap:6px;padding:8px 0;background:var(--cream)}
+ .tab{padding:8px 12px;font-size:12px}
+ .section{padding:14px;margin:10px 0}
+ .grid{grid-template-columns:minmax(0,1fr)}
+ .report-actions{align-items:stretch}
+ .report-actions .btn{width:100%}
+ .report-actions .muted{font-size:11px}
+ .flight-filters{gap:9px;padding:10px}
+ .flight-filter{min-width:0;flex:1 1 145px}
+ .flight-filter select{width:100%;min-width:0}
+ .live-flight-panel{padding:10px;gap:9px}
+ .live-flight-field{min-width:0;flex:1 1 100%}
+ .budget-total-pair{flex-wrap:wrap;white-space:normal}
+ .budget-total-option{flex-wrap:wrap}
+ .activity{grid-template-columns:56px minmax(0,1fr);gap:8px}
+ .city-header{padding:12px}
+ .city-emoji{font-size:25px}
+ .city-name{font-size:19px}
+ .day-num{width:44px;min-height:58px;font-size:19px}
+ .day-title-wrap{padding:10px}
+ .open-btn{padding:10px}
+ .day-tags{padding:0 10px 10px 10px}
+ .day-schedule{padding:0 10px 12px}
+ .schedule-item{grid-template-columns:48px minmax(0,1fr);gap:0 7px}
+ .sch-body{padding-left:8px}
+ .budget-table{min-width:600px}
+ .tp-chat-panel{right:10px;left:10px;bottom:76px;width:auto;max-width:none;height:min(72dvh,620px)}
+ .tp-chat-launcher{right:12px;bottom:12px}
+}
+@media(max-width:480px){
+ .wrap{padding:12px 10px 30px}
+ .brand-header{align-items:center}
+ .brand-tagline{flex:1 1 100%;border-left:0;padding-left:0}
+ .formgrid{grid-template-columns:minmax(0,1fr)}
+ .field.wide,.field.destination-field,.field.span-2,.field.span-3,.field.span-4,.field.date-field,.field.party-field,.field.party-total{grid-column:1/-1}
+ .field.party-field{grid-column:span 1}
+ .form-actions{align-items:stretch}
+ .form-actions .btn{width:100%}
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .stat span{font-size:9px}
+ .section-head{align-items:flex-start}
+ .section-head .flight-section-toggle{margin-left:0}
+ .flight-card-top{align-items:flex-start}
+ .flight-card-flightline{gap:7px 12px}
+ .flight-card-leg{gap:7px}
+ .flight-card-leg-type{min-width:25px}
+ .budget-table{min-width:570px}
+ .day-title{font-size:13px}
+ .day-subtitle{font-size:10px}
+ .sch-detail{font-size:11px}
+ .tp-chat-panel{height:min(70dvh,580px)}
+}
+@media(hover:none){
+ .tab,.btn,.flight-info-button{touch-action:manipulation}
+}
+</style></head><body><main class="wrap" id="wrap">
 <div class="brand-header"><a class="brand-logo" href="/" aria-label="TripPlanner home"><img src="/logo.svg" width="54" height="54" alt="TripPlanner logo"><span class="brand-wordmark">Trip<span>Planner</span></span></a><span class="brand-tagline">Thoughtfully planned journeys</span><span id="appVersion" class="version-tag" aria-label="Application version">v1.3.4</span></div><h1>Plan a journey worth remembering.</h1><p class="lead">A detailed travel report, thoughtfully organised around your route, dates, travellers and budget — from flight strategy and hotel choices to day-by-day experiences and a realistic cost plan.</p>
 <section class="formbox" id="tripFormBox"><form id="tripForm" class="formgrid">
 <label class="field span-2 destination-field">Destination / route<input id="dest" required maxlength="120" placeholder="e.g. Japan: Tokyo, Kyoto and Osaka"></label>
