@@ -1,5 +1,5 @@
 {
-  "version": "1.7.23",
+  "version": "1.7.24",
   "released": "2026-11-23",
-  "releaseName": "Responsive navigation and automatic live flight refresh"
+  "releaseName": "Live flight refresh on cached plans and flight card rendering fix"
 }
