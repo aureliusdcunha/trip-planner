@@ -19,7 +19,7 @@ input,select{min-width:0;height:39px;border:1px solid var(--line);border-radius:
 .notice{padding:11px 13px;border-radius:9px;background:#fff6e5;color:#76531d;margin:12px 0;font-size:12px}.error{background:#fff0ef;color:#9b2823}.filters{display:grid;grid-template-columns:2fr repeat(5,minmax(120px,1fr));gap:10px;align-items:end}
 .filter{min-width:0}.filter input,.filter select{width:100%}.filter-actions{display:flex;gap:8px;flex-wrap:wrap}
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.stat{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 14px;min-width:120px}.stat b{display:block;font-size:19px}.stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:820px}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid #f0e9df;font-size:12px;white-space:nowrap}th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em;background:#fffdf9;position:sticky;top:0}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:860px} .select-cell{width:38px;text-align:center!important} .select-cell input{width:16px;height:16px;accent-color:var(--red);cursor:pointer;vertical-align:middle} .bulk-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 12px}.bulk-actions .muted{font-size:12px} .bulk-actions .btn{white-space:nowrap}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid #f0e9df;font-size:12px;white-space:nowrap}th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em;background:#fffdf9;position:sticky;top:0}
 tbody tr{cursor:pointer}tbody tr:hover{background:#fffaf0}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}.pill{display:inline-block;border-radius:99px;padding:3px 8px;font-size:10px;font-weight:800;background:#edf5ef;color:var(--green)}.pill.bad{background:#fff0ef;color:#b3261e}.pill.warn{background:#fff5df;color:var(--amber)}
 .pager{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-top:13px}.empty{text-align:center;padding:35px;color:var(--muted)}
 .detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0}.detail-item{background:#fffaf2;border:1px solid var(--line);border-radius:9px;padding:9px}.detail-item small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.detail-item b{overflow-wrap:anywhere}
@@ -62,7 +62,8 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     </section>
 
     <section class="panel">
-      <div class="table-wrap"><table><thead><tr><th>Completed</th><th>Endpoint</th><th>HTTP</th><th>Outcome</th><th>Duration</th><th>Transaction ID</th></tr></thead><tbody id="logRows"></tbody></table></div>
+      <div class="bulk-actions"><label class="muted"><input id="selectPage" type="checkbox" style="width:16px;height:16px;vertical-align:middle;accent-color:var(--red)"> Select all on this page</label><span class="muted" id="selectionCount">0 logs selected</span><button class="btn" id="downloadSelectedBtn" type="button" disabled>Download selected logs</button><button class="btn secondary" id="clearSelectionBtn" type="button" disabled>Clear selection</button></div>
+      <div class="table-wrap"><table><thead><tr><th class="select-cell">Select</th><th>Completed</th><th>Endpoint</th><th>HTTP</th><th>Outcome</th><th>Duration</th><th>Transaction ID</th></tr></thead><tbody id="logRows"></tbody></table></div>
       <div id="emptyState" class="empty hidden">No transactions match these filters.</div>
       <div class="pager"><span class="muted" id="pageInfo">Loading transactions…</span><div class="filter-actions"><button class="btn secondary" id="prevBtn" type="button">Previous</button><button class="btn secondary" id="nextBtn" type="button">Next</button></div></div>
     </section>
@@ -78,7 +79,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
 <script>
 (()=> {
   const $ = id => document.getElementById(id);
-  const state = { token: sessionStorage.getItem("tp_diag_token") || "", offset: 0, limit: 50, total: 0, currentLog: null };
+  const state = { token: sessionStorage.getItem("tp_diag_token") || "", offset: 0, limit: 50, total: 0, currentLog: null, selectedLogs: new Map(), visibleRows: [] };
   const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
   const dateText = value => { if(!value) return "—"; const d=new Date(value); return Number.isNaN(d.getTime())?value:d.toLocaleString(); };
   const showError = (el,msg) => { el.textContent=msg; el.classList.remove("hidden"); };
@@ -96,17 +97,29 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     return p.toString();
   }
   async function load(){
-    hideError($("loadError")); $("logRows").innerHTML='<tr><td colspan="6" class="empty">Loading transactions…</td></tr>';
+    hideError($("loadError")); $("logRows").innerHTML='<tr><td colspan="7" class="empty">Loading transactions…</td></tr>';
     try{
       const data=await request("/api/diagnostics?"+queryString());
       state.total=data.total||0;
       const rows=data.transactions||[];
       $("totalCount").textContent=state.total.toLocaleString();
       $("failedCount").textContent=rows.filter(x=>x.outcome!=="success").length.toLocaleString();
+      state.visibleRows=rows;
       $("logRows").innerHTML=rows.map(row=>{
-        const outcome=row.outcome||"unknown",cls=outcome==="success"?"":outcome==="client_error"?"warn":"bad";
-        return '<tr data-id="'+esc(row.transaction_id)+'"><td>'+esc(dateText(row.completed_at))+'</td><td><b>'+esc(String(row.endpoint||"").toUpperCase())+'</b></td><td>'+esc(row.http_status)+'</td><td><span class="pill '+cls+'">'+esc(outcome.replaceAll("_"," "))+'</span></td><td>'+esc(row.duration_ms)+' ms</td><td class="mono">'+esc(row.transaction_id)+'</td></tr>';
+        const outcome=row.outcome||"unknown",cls=outcome==="success"?"":outcome==="client_error"?"warn":"bad",id=String(row.transaction_id||"");
+        const checked=state.selectedLogs.has(id)?" checked":"";
+        return '<tr data-id="'+esc(id)+'"><td class="select-cell"><input class="log-select" type="checkbox" data-select-id="'+esc(id)+'" aria-label="Select transaction '+esc(id)+'"'+checked+'></td><td>'+esc(dateText(row.completed_at))+'</td><td><b>'+esc(String(row.endpoint||"").toUpperCase())+'</b></td><td>'+esc(row.http_status)+'</td><td><span class="pill '+cls+'">'+esc(outcome.replaceAll("_"," "))+'</span></td><td>'+esc(row.duration_ms)+' ms</td><td class="mono">'+esc(id)+'</td></tr>';
       }).join("");
+      $("logRows").querySelectorAll("input.log-select").forEach(box=>box.addEventListener("click",e=>e.stopPropagation()));
+      $("logRows").querySelectorAll("input.log-select").forEach(box=>box.addEventListener("change",()=>{
+        const row=rows.find(x=>String(x.transaction_id)===box.dataset.selectId);
+        if(box.checked&&row)state.selectedLogs.set(box.dataset.selectId,row);
+        else state.selectedLogs.delete(box.dataset.selectId);
+        updateSelectionUI();
+      }));
+      $("selectPage").checked=rows.length>0&&rows.every(x=>state.selectedLogs.has(String(x.transaction_id)));
+      $("selectPage").indeterminate=rows.some(x=>state.selectedLogs.has(String(x.transaction_id)))&&!$("selectPage").checked;
+      updateSelectionUI();
       $("emptyState").classList.toggle("hidden",rows.length!==0);
       $("pageInfo").textContent=state.total?("Showing "+(state.offset+1)+"–"+Math.min(state.offset+rows.length,state.total)+" of "+state.total):"No transactions found";
       $("prevBtn").disabled=state.offset===0;
@@ -116,6 +129,37 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       $("logRows").innerHTML="";
       showError($("loadError"),error.message);
       if(error.message.toLowerCase().includes("token")){state.token="";sessionStorage.removeItem("tp_diag_token");setUnlocked(false);showError($("authError"),error.message)}
+    }
+  }
+  function updateSelectionUI(){
+    const count=state.selectedLogs.size;
+    $("selectionCount").textContent=count+" log"+(count===1?"":"s")+" selected (across pages)";
+    $("downloadSelectedBtn").disabled=count===0;
+    $("clearSelectionBtn").disabled=count===0;
+    const rows=state.visibleRows||[];
+    const selected=rows.filter(x=>state.selectedLogs.has(String(x.transaction_id))).length;
+    $("selectPage").checked=rows.length>0&&selected===rows.length;
+    $("selectPage").indeterminate=selected>0&&selected<rows.length;
+  }
+  async function downloadSelected(){
+    const ids=Array.from(state.selectedLogs.keys());
+    if(!ids.length)return;
+    const button=$("downloadSelectedBtn"),original=button.textContent;
+    button.disabled=true;button.textContent="Preparing "+ids.length+" logs…";
+    try{
+      const data=await request("/api/diagnostics?ids="+encodeURIComponent(ids.join(",")));
+      const logs=data.logs||[];
+      if(!logs.length)throw new Error("No selected transaction logs could be retrieved.");
+      const bundle={exported_at:new Date().toISOString(),selected_count:ids.length,downloaded_count:logs.length,missing_ids:ids.filter(id=>!logs.some(log=>String(log.transaction_id)===id)),logs};
+      const blob=new Blob([JSON.stringify(bundle,null,2)],{type:"application/json"});
+      const url=URL.createObjectURL(blob),a=document.createElement("a");
+      a.href=url;a.download="tripplanner-diagnostics-"+new Date().toISOString().replace(/[:.]/g,"-")+".json";
+      document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+      button.textContent="Downloaded "+logs.length+" logs";
+      setTimeout(()=>{button.textContent=original;updateSelectionUI()},1600);
+    }catch(error){
+      showError($("loadError"),error.message);
+      button.textContent=original;updateSelectionUI();
     }
   }
   async function openDetail(id){
@@ -137,6 +181,16 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     }catch(error){showError($("loadError"),error.message)}
   }
   $("authForm").addEventListener("submit",async e=>{e.preventDefault();state.token=$("tokenInput").value.trim();hideError($("authError"));try{await request("/api/diagnostics?limit=1");sessionStorage.setItem("tp_diag_token",state.token);setUnlocked(true);state.offset=0;await load()}catch(error){state.token="";showError($("authError"),error.message)}});
+  $("selectPage").addEventListener("change",()=>{
+    (state.visibleRows||[]).forEach(row=>{
+      const id=String(row.transaction_id);
+      if($("selectPage").checked)state.selectedLogs.set(id,row);
+      else state.selectedLogs.delete(id);
+    });
+    load();
+  });
+  $("downloadSelectedBtn").addEventListener("click",downloadSelected);
+  $("clearSelectionBtn").addEventListener("click",()=>{state.selectedLogs.clear();load()});
   $("applyBtn").addEventListener("click",()=>{state.offset=0;load()});
   $("clearBtn").addEventListener("click",()=>{["searchInput","endpointFilter","outcomeFilter","statusFilter","fromFilter","toFilter"].forEach(id=>$(id).value="");state.offset=0;load()});
   $("refreshBtn").addEventListener("click",()=>{if(state.token)load()});
