@@ -1,5 +1,5 @@
 {
-  "version": "1.7.15",
+  "version": "1.7.16",
   "released": "2026-11-23",
-  "releaseName": "Authenticated transaction diagnostics viewer"
+  "releaseName": "Fix airfare budget fallback when flights are not selected"
 }
