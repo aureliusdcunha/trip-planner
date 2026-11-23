@@ -1,5 +1,5 @@
 {
-  "version": "1.7.17",
+  "version": "1.7.18",
   "released": "2026-11-23",
-  "releaseName": "Internal execution tracing and diagnostics timeline"
+  "releaseName": "Verified flight research and provider fallback fixes"
 }
