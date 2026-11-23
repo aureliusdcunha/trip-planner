@@ -63,7 +63,7 @@ export async function onRequestGet({ request, env }) {
     const values = [];
     if (endpoint) { clauses.push("endpoint = ?"); values.push(endpoint); }
     if (outcome) { clauses.push("outcome = ?"); values.push(outcome); }
-    if (status && /^\\d{3}$/.test(status)) { clauses.push("http_status = ?"); values.push(Number(status)); }
+    if (status && /^\d{3}$/.test(status)) { clauses.push("http_status = ?"); values.push(Number(status)); }
     if (from) { clauses.push("completed_at >= ?"); values.push(from + "T00:00:00"); }
     if (to) { clauses.push("completed_at < ?"); values.push(to + "T23:59:59.999"); }
     if (search) {
