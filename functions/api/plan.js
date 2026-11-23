@@ -369,6 +369,9 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    try{data=JSON.parse(output.trim());validationIssue=validateAgent(kind,data,ctx)}
    catch{validationIssue="Gemini returned incomplete or invalid JSON."}
   }
+  if(kind==="flights"&&data&&(!ctx.useSearch||queries.length===0||sources.length===0)){
+   throw new Error(label+": live flight research could not be verified. Search must be enabled and at least one real search query and source are required; generated flight suggestions have been discarded.");
+  }
   if((status==="completed"||status==="incomplete")&&data&&!validationIssue){
    if(status==="incomplete")send({type:"agent_notice",agent:label,message:"Gemini marked the interaction incomplete, but the returned JSON passed all required checks; retaining the validated result."});
    return {data,sources:sourceUnique(sources),queries,model,status,maxOutputTokens};
@@ -504,9 +507,12 @@ async function handlePlanPost(context){
        emit({type:"agent_started",agent:"Flight researcher",completed:0,total:1});
        let combined=JSON.parse(JSON.stringify(cachedTrip.report));
        combined.request_context={trip,useSearch,maxBases};
-       let freshFlight=null;
+       // A cached itinerary must never retain old/AI-generated flight cards when fresh flight research fails.
+       combined.flight_options=[];
+       combined.getting_there="";
+       let freshFlight=null,flightFailure=null;
        try{freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher",maxDurationMs:150000},env,emit,retryBudget,modelState,requestBudget,requestGate)}
-       catch(error){combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];}
+       catch(error){flightFailure=error;combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];emit({type:"agent_failed",agent:"Flight researcher",error:error.message||"Live flight research unavailable"});}
        const flightResearch=freshFlight?.data||{};
        if(freshFlight){combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];combined.getting_there=flightResearch.getting_there||"";combined.research_unavailable=(combined.research_unavailable||[]).filter(x=>x.kind!=="flights");}
        if(combined.flight_options.length){
@@ -515,6 +521,23 @@ async function handlePlanPost(context){
         emit({type:"flight_ranking",used:ranked.used,message:ranked.used?"Comparing freshly researched flight prices, journey times and stops…":"Keeping the freshly researched flight order."});
        }
        const fareCheck=validateFlightFareScale(flightResearch,combined.budget,null,trip.cur);
+       if(flightFailure||!freshFlight||!combined.flight_options.length){
+        combined.flight_options=[];
+        if(combined.budget){
+         combined.budget.international_flight_per_person=0;
+         combined.budget.international_flight_adult=0;
+         combined.budget.international_flight_child=0;
+         combined.budget.international_flight_infant=0;
+        }
+        combined.research=combined.research||{};
+        combined.research.flight_search_status="unavailable";
+        combined.research.flight_search_requested=!!useSearch;
+        combined.research.flight_search_executed=!!(freshFlight?.queries?.length);
+        combined.research.flight_verified_result_count=0;
+        combined.research.flight_failure_reason=flightFailure?.message||"No verifiable flight options were returned.";
+        combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
+        combined.caveats.push("Live flight research could not be verified. No flight options or flight fare estimates are included; enter a fare manually or retry flight research.");
+       }
        if(fareCheck.invalid){
         combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
         combined.caveats.push(fareCheck.invalid+" freshly researched flight fare option(s) failed the currency-scale check and were excluded from the trip budget.");
@@ -534,9 +557,16 @@ async function handlePlanPost(context){
         combined.research.flight_refresh_search_queries=freshFlight.queries.length;
         combined.research.flight_refresh_source_count=freshFlight.sources.length;
         combined.research.flight_refreshed_at=new Date().toISOString();
-        emit({type:"agent_completed",agent:"Flight researcher",completed:1,total:1,sourceCount:freshFlight.sources.length,searchCount:freshFlight.queries.length});
+        emit({type:"agent_completed",agent:"Flight researcher",completed:1,total:1,sourceCount:freshFlight.sources.length,searchCount:freshFlight.queries.length,resultCount:combined.flight_options.length});
        }
-       combined.cache={hit:true,createdAt:cachedTrip.createdAt,flightsRefreshed:!!freshFlight};
+       combined.research=combined.research||{};
+       if(!flightFailure&&freshFlight&&combined.flight_options.length){
+        combined.research.flight_search_status="completed";
+        combined.research.flight_search_requested=!!useSearch;
+        combined.research.flight_search_executed=true;
+        combined.research.flight_verified_result_count=combined.flight_options.length;
+       }
+       combined.cache={hit:true,createdAt:cachedTrip.createdAt,flightsRefreshed:!!freshFlight&&combined.flight_options.length>0};
        emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt});
        return;
       }
@@ -611,6 +641,28 @@ async function handlePlanPost(context){
       const homeCurrency=String(trip.cur||"INR").toUpperCase();
       const fxRate=await fxRatePromise;
       const flightResearch=specialistResults.find(x=>x.kind==="flights")?.data;
+      const flightRun=openingRuns.find(x=>x.task.kind==="flights");
+      if(!flightRun?.ok||!flightResearch?.flight_options?.length){
+       combined.flight_options=[];
+       guide.budget.international_flight_per_person=0;
+       guide.budget.international_flight_adult=0;
+       guide.budget.international_flight_child=0;
+       guide.budget.international_flight_infant=0;
+       guide.caveats=Array.isArray(guide.caveats)?guide.caveats:[];
+       guide.caveats.push("Live flight research was unavailable or could not be verified. Flight costs are excluded from the estimate until real fares are added.");
+       combined.research=combined.research||{};
+       combined.research.flight_search_status="unavailable";
+       combined.research.flight_search_requested=!!useSearch;
+       combined.research.flight_search_executed=false;
+       combined.research.flight_verified_result_count=0;
+       combined.research.flight_failure_reason=flightRun?.error||"No verified flight options returned.";
+      }else{
+       combined.research=combined.research||{};
+       combined.research.flight_search_status="completed";
+       combined.research.flight_search_requested=!!useSearch;
+       combined.research.flight_search_executed=true;
+       combined.research.flight_verified_result_count=flightResearch.flight_options.length;
+      }
       if(flightResearch?.flight_options?.length){const ranked=await rankFlightOptionsWithWorkersAI(flightResearch.flight_options,env);flightResearch.flight_options=ranked.options;combined.flight_options=ranked.options;emit({type:"flight_ranking",used:ranked.used,message:ranked.used?"Comparing flight prices, journey times, stops and layovers…":"Keeping the researched flight order while preparing your comparisons."})}
       const fareScaleCheck=validateFlightFareScale(flightResearch,guide.budget,fxRate,homeCurrency);
       if(fareScaleCheck.invalid){
