@@ -289,9 +289,9 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
  for(let attempt=0;attempt<20;attempt++){
   while(agentModelState.index<agentModelState.models.length&&agentModelState.health?.disabled?.has(agentModelState.models[agentModelState.index]))agentModelState.index++;
   if(agentModelState.index>=agentModelState.models.length){const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models have been temporarily paused after rate-limit or overload responses from other researchers.");}
-  if(Date.now()>=agentDeadline)throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");
+  if(Date.now()>=agentDeadline){const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
   await acquireRequestSlot(requestGate);
-  if(Date.now()>=agentDeadline){releaseRequestSlot(requestGate);throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
+  if(Date.now()>=agentDeadline){releaseRequestSlot(requestGate);const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
   const model=agentModelState.models[agentModelState.index];
   if(model!==lastModel){lastModel=model;capacityRetriesForModel=0}
   const modelIsFallback=agentModelState.index>0;
@@ -336,7 +336,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    // A rate-limited model is skipped immediately; do not stall every researcher on its cooldown.
    const next=advanceModel(agentModelState,model);
    if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Gemini rate-limited "+model+". Skipping it and switching to "+next+"."});continue}
-   const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details);
+   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details);
   }
   if(!response.ok){
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
@@ -408,7 +408,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
     if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Model "+model+" reported high demand. Switching immediately to "+next+"."});continue}
     const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please retry later. "+streamError);
    }
-   throw new Error(label+": "+streamError);
+   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": "+streamError);
   }
   let data=null,validationIssue="No structured JSON was returned.";
   if(output.trim()){
