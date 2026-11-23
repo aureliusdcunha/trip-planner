@@ -101,12 +101,12 @@ tbody tr:nth-child(even){background:#f8faf9}tbody tr:hover{background:#eaf5ef}
       <div class="section-heading"><div><span class="eyebrow">DATA LIFECYCLE</span><h2 id="lifecycleTitle">Retention & cache policies</h2><p>How long Trip Planner keeps operational logs and reuses cached research.</p></div><span class="policy-note">Configured application policies</span></div>
       <div class="lifecycle-grid">
         <article class="lifecycle-card logs-card"><div class="lifecycle-icon">◷</div><div class="lifecycle-label">Diagnostics transactions</div><div class="lifecycle-value" id="policyLogDays">7 days</div><div class="lifecycle-desc">Adjustable log retention. Old records are deleted from D1 when this page applies the selected setting.</div><span class="policy-tag adjustable">Adjustable below</span></article>
-        <article class="lifecycle-card flight-card"><div class="lifecycle-icon">✈</div><div class="lifecycle-label">Flight-search results</div><div class="lifecycle-value">48 hours</div><div class="lifecycle-desc">Saved flight-search results are reused for up to 48 hours. Expired results trigger a fresh search.</div><span class="policy-tag fixed">Application setting</span></article>
-        <article class="lifecycle-card report-card"><div class="lifecycle-icon">⌁</div><div class="lifecycle-label">Trip-report research cache</div><div class="lifecycle-value">14 days</div><div class="lifecycle-desc">Completed non-flight trip research can be reused for 14 days. Flight options are excluded and researched separately.</div><span class="policy-tag fixed">Application setting</span></article>
+        <article class="lifecycle-card flight-card"><div class="lifecycle-icon">✈</div><div class="lifecycle-label">Flight-search results</div><div class="lifecycle-value" id="policyFlightHours">48 hours</div><div class="lifecycle-desc">Saved flight-search results are reused for up to 48 hours. Expired results trigger a fresh search.</div><span class="policy-tag fixed">Application setting</span></article>
+        <article class="lifecycle-card report-card"><div class="lifecycle-icon">⌁</div><div class="lifecycle-label">Saved itineraries</div><div class="lifecycle-value">Until deleted</div><div class="lifecycle-desc">Completed itineraries retrieved by locator are saved in D1. There is currently no automatic expiry period.</div><span class="policy-tag fixed">No automatic expiry</span></article>
       </div>
-      <p class="lifecycle-footnote">The flight and trip-report cache periods are currently defined by the application; they are displayed here for visibility and are not editable from this page. Expiry means a cached result is no longer reused; it does not necessarily mean its database row is immediately deleted.</p>
+      <p class="lifecycle-footnote">Flight cache duration can be changed under Retention & Cache Settings. Saved itinerary records are not the same as a research cache and currently remain until explicitly deleted.</p>
     </section>
-    <nav class="tabbar" aria-label="Diagnostics settings"><button class="tab active" id="filterTab" type="button">Filter Settings</button><button class="tab" id="listTab" type="button">List Settings</button></nav>
+    <nav class="tabbar" aria-label="Diagnostics settings"><button class="tab active" id="filterTab" type="button">Filter Settings</button><button class="tab" id="listTab" type="button">Retention & Cache</button></nav>
     <section class="panel settings-panel" id="filterSettings">
       <div class="filters">
         <div class="filter"><label for="searchInput">Search</label><input id="searchInput" placeholder="Transaction ID, payload, error…"></div>
@@ -132,7 +132,16 @@ tbody tr:nth-child(even){background:#f8faf9}tbody tr:hover{background:#eaf5ef}
           <div class="filter-actions"><button class="btn" id="saveRetentionBtn" type="button">Save Retention Settings</button><button class="btn amber" id="pruneBtn" type="button">Delete Older Logs</button></div>
         </div>
       </fieldset>
-      <p class="muted" id="retentionHelp">This preference is saved only in this browser. When you unlock Diagnostics, the page applies the selected retention period to D1 log records.</p>
+      <p class="muted" id="retentionHelp">The selected log-retention period is saved in this browser and applied to D1 when you save or unlock Diagnostics.</p>
+      <fieldset class="filter-fieldset"><legend>Flight-search cache settings</legend>
+        <div class="retention-grid">
+          <label for="flightCacheHours">Reuse saved flight-search results for
+            <select id="flightCacheHours"><option value="6">6 hours</option><option value="12">12 hours</option><option value="24">24 hours</option><option value="48">48 hours</option><option value="72">72 hours</option><option value="168">7 days</option><option value="336">14 days</option><option value="720">30 days</option></select>
+          </label>
+          <div class="filter-actions"><button class="btn" id="saveCachePolicyBtn" type="button">Save Cache Settings</button></div>
+        </div>
+        <p class="muted">Applies to new and existing cached flight results. Shortening this period can make previously cached results expire sooner.</p>
+      </fieldset>
       <div id="settingsMessage" class="notice hidden"></div>
     </section>
 
@@ -177,6 +186,7 @@ tbody tr:nth-child(even){background:#f8faf9}tbody tr:hover{background:#eaf5ef}
     try{
       const data=await request("/api/diagnostics?"+queryString());
       state.total=data.total||0;
+      if(data.policies?.flight_cache_hours){$("flightCacheHours").value=String(data.policies.flight_cache_hours);$("policyFlightHours").textContent=data.policies.flight_cache_hours+" hours";}
       const rows=data.transactions||[];
       $("totalCount").textContent=state.total.toLocaleString();
       $("failedCount").textContent=rows.filter(x=>x.outcome!=="success").length.toLocaleString();
@@ -305,8 +315,21 @@ tbody tr:nth-child(even){background:#f8faf9}tbody tr:hover{background:#eaf5ef}
   $("clearSelectionBtn").addEventListener("click",()=>{state.selectedLogs.clear();load()});
   $("applyBtn").addEventListener("click",()=>{state.offset=0;load()});
   $("refreshNowBtn").addEventListener("click",()=>{state.offset=0;load()});
-  $("filterTab").addEventListener("click",()=>{ $("filterSettings").classList.remove("hidden");$("listSettings").classList.add("hidden");$("filterTab").classList.add("active");$("listTab").classList.remove("active") });
-  $("listTab").addEventListener("click",()=>{ $("listSettings").classList.remove("hidden");$("filterSettings").classList.add("hidden");$("listTab").classList.add("active");$("filterTab").classList.remove("active") });
+  $("filterTab").addEventListener("click",()=>{ $("filterSettings").classList.remove("hidden");$("listSettings").classList.add("hidden");$("transactionListPanel").classList.remove("hidden");$("filterTab").classList.add("active");$("listTab").classList.remove("active") });
+  $("listTab").addEventListener("click",()=>{ $("listSettings").classList.remove("hidden");$("filterSettings").classList.add("hidden");$("transactionListPanel").classList.add("hidden");$("listTab").classList.add("active");$("filterTab").classList.remove("active") });
+  async function saveCachePolicy(){
+    const hours=Number($("flightCacheHours").value),button=$("saveCachePolicyBtn");
+    button.disabled=true;
+    try{
+      const response=await fetch("/api/diagnostics",{method:"POST",headers:{Authorization:"Bearer "+state.token,"content-type":"application/json"},body:JSON.stringify({action:"save_cache_policy",flight_cache_hours:hours})});
+      const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Unable to save flight cache settings.");
+      $("policyFlightHours").textContent=data.flight_cache_hours+" hours";
+      $("settingsMessage").textContent="Flight-search cache duration saved for all users: "+data.flight_cache_hours+" hours.";
+      $("settingsMessage").classList.remove("hidden","error");
+    }catch(error){$("settingsMessage").textContent=error.message;$("settingsMessage").classList.remove("hidden");$("settingsMessage").classList.add("error")}
+    finally{button.disabled=false}
+  }
+  $("saveCachePolicyBtn").addEventListener("click",saveCachePolicy);
   async function saveRetention(deleteBefore,showMessage=true){
     const days=Number($("retentionDays").value);
     if(deleteBefore&&!confirm("Permanently delete all transaction logs completed before "+deleteBefore+"? This cannot be undone."))return;
