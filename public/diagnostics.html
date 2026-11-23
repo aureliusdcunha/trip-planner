@@ -26,8 +26,8 @@ tbody tr{cursor:pointer}tbody tr:nth-child(even){background:#f7f7f7}tbody tr:hov
 .detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0}.detail-item{background:#fffaf2;border:1px solid var(--line);border-radius:9px;padding:9px}.detail-item small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.detail-item b{overflow-wrap:anywhere}
 pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;overflow:auto;max-height:65vh;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .hidden{display:none!important}.foot{font-size:11px;color:var(--muted);margin-top:18px}
-@media(max-width:950px){.filters{grid-template-columns:repeat(3,minmax(0,1fr))}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:560px){.wrap{padding:18px 12px 40px}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.filters .filter:first-child{grid-column:1/-1}.detail-grid{grid-template-columns:1fr 1fr}.top{align-items:flex-start}h1{font-size:25px}}
+@media(max-width:950px){.filters{grid-template-columns:repeat(3,minmax(0,1fr))}.retention-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.wrap{padding:18px 12px 40px}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.filters .filter:first-child{grid-column:1/-1}.retention-grid{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr 1fr}.top{align-items:flex-start}h1{font-size:25px}}
 .trace-timeline{display:grid;gap:8px}.trace-event{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:9px;padding:10px;background:#fff}.trace-dot{width:9px;height:9px;border-radius:50%;background:#8b8b8b;margin-top:6px;flex:none}.trace-dot.good{background:#18794e}.trace-dot.warn{background:#a66b12}.trace-dot.bad{background:#b42318}.trace-main{min-width:0;flex:1}.trace-main b{display:block;text-transform:capitalize}.trace-main small{display:block;color:var(--muted);font-size:11px}.trace-main pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f8f5ef;padding:8px;border-radius:6px;margin:7px 0 0;font:11px/1.45 ui-monospace,monospace}.trace-event .pill{flex:none}</style>
 </head>
 <body>
@@ -92,7 +92,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       <h3 style="margin:12px 0 8px">Execution timeline</h3><div id="traceTimeline" class="trace-timeline"></div><h3 style="margin:12px 0 8px">Complete transaction record</h3><pre id="detailJson"></pre>
     </section>
   </section>
-  <p class="foot">Transaction records are stored in Cloudflare D1 and automatically expire after seven days. Request and response payloads may contain trip details; keep this page and its access token private.</p>
+  <p class="foot">Transaction records are stored in Cloudflare D1 and automatically expire according to the configured retention period. Request and response payloads may contain trip details; keep this page and its access token private.</p>
 </main>
 <script>
 (()=> {
