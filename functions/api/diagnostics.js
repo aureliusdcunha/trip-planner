@@ -137,7 +137,7 @@ export async function onRequestPost({ request, env }) {
   let deleted=0;
   if(body.delete_before){
    const cutoff=new Date(body.delete_before+"T23:59:59.999Z");
-   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(body.delete_before)||Number.isNaN(cutoff.getTime()))return json({error:"Enter a valid delete-before date."},400);
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(body.delete_before)||Number.isNaN(cutoff.getTime()))return json({error:"Enter a valid delete-before date."},400);
    const result=await db.prepare("DELETE FROM transaction_logs WHERE completed_at < ?").bind(cutoff.toISOString()).run();
    deleted=Number(result.meta?.changes||0);
   }else{
