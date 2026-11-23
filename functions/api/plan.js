@@ -1,9 +1,6 @@
 import { withTransactionLog, traceEvent } from "../lib/transaction-log.js";
 import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
-import { makeTripCacheKey, readTripReportCache, writeTripReportCache } from "../lib/trip-cache.js";
-// Cloudflare Pages Function: POST /api/plan
-// Parallel travel-research specialists orchestrated by one streamed request.
-// Each specialist returns a bounded JSON object; route -> research -> day planners.
+im  if(d.meals.some(m=>!m.time||!m.meal))return "Every meal needs a time and meal description.";t returns a bounded JSON object; route -> research -> day planners.
 const encoder=new TextEncoder();
 const J=(o,s=200)=>new Response(JSON.stringify(o),{status:s,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
 const clip=(v,n)=>String(v??"").replace(/[\r\n]+/g," ").slice(0,n);
@@ -156,7 +153,7 @@ function validateAgent(kind,data,ctx){
  if(kind==="day"){
   if(!Array.isArray(data.days)||data.days.length!==1)return "The day planner must return exactly one day.";
   const d=data.days[0];if(d.date!==ctx.date||!Array.isArray(d.activities)||d.activities.length<3||!Array.isArray(d.meals)||d.meals.length<2)return "The daily plan needs at least three activities, two meals and the requested date.";
-  if(d.activities.some(a=>!a.time||!a.name||!a.description||!String(a.transport||a.transport_details||"").trim()||!(a.kid_note||a.child_friendly)||!Number.isFinite(a.adult_cost_estimate)||!Number.isFinite(a.child_cost_estimate)||!Number.isFinite(a.infant_cost_estimate)))return "Every itinerary activity needs a time, useful details, transport notes, a child/family note and adult/child/infant costs.";
+  if(d.activities.some(a=>!a.time||!a.name||!a.description))return "Every itinerary activity needs a time, name and useful description.";
   if(d.meals.some(m=>!m.time||!Number.isFinite(m.adult_price_estimate)||!Number.isFinite(m.child_price_estimate)||!Number.isFinite(m.infant_price_estimate)))return "Every meal needs a time and separate adult, child and infant estimates.";
   const isArrivalDay=ctx.dayNumber===1,isDepartureDay=ctx.dayNumber===ctx.trip.days;
   if(!isArrivalDay&&!isDepartureDay){
@@ -249,6 +246,13 @@ async function rankFlightOptionsWithWorkersAI(options,env){
   return {options:[...ranked,...candidates.filter((_,i)=>!used.has(i)),...options.slice(40)],used:true};
  }catch(error){console.warn("Workers AI flight ranking unavailable; retaining source order:",error?.message||error);return {options,used:false}}
 }
+function normaliseFallbackDay(data,ctx){
+ if(!data||!Array.isArray(data.days)||data.days.length!==1)return data;
+ const d=data.days[0];d.date=d.date||ctx.date;d.base=d.base||ctx.base||"";d.activities=Array.isArray(d.activities)?d.activities:[];d.meals=Array.isArray(d.meals)?d.meals:[];
+ for(const a of d.activities){a.transport=a.transport||a.transport_details||"Local transfer; confirm route and timing";a.kid_note=a.kid_note||a.child_friendly||"Check age restrictions and suitability";for(const k of ["adult_cost_estimate","child_cost_estimate","infant_cost_estimate"])if(!Number.isFinite(a[k]))a[k]=Number.isFinite(a.cost_estimate)?a.cost_estimate:0}
+ for(const m of d.meals){if(!Number.isFinite(m.adult_price_estimate))m.adult_price_estimate=Number.isFinite(m.price_estimate)?m.price_estimate:0;if(!Number.isFinite(m.child_price_estimate))m.child_price_estimate=m.adult_price_estimate;if(!Number.isFinite(m.infant_price_estimate))m.infant_price_estimate=m.child_price_estimate}
+ return data;
+}
 function extractFallbackJson(raw){
  const text=extractJsonText(raw).trim().replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim();
  if(!text)return null;try{return JSON.parse(text)}catch{}
@@ -266,7 +270,7 @@ async function runOpenAICompatibleFallback(provider,kind,ctx,env,label){
  let payload;try{payload=await response.json()}catch{throw new Error(provider+" returned a non-JSON HTTP response.")}
  const raw=payload.choices?.[0]?.message?.content??payload.output_text??payload.response??payload.result;const data=extractFallbackJson(raw);
  if(!data)throw new Error(provider+" returned empty or malformed JSON (finish reason: "+String(payload.choices?.[0]?.finish_reason||"unknown")+")");
- const issue=validateAgent(kind,data,{...ctx,useSearch:false});if(issue)throw new Error(provider+" response failed validation: "+issue);
+ if(kind==="day")data=normaliseFallbackDay(data,ctx);const issue=validateAgent(kind,data,{...ctx,useSearch:false});if(issue)throw new Error(provider+" response failed validation: "+issue);
  return {data,sources:[],queries:[],model:provider+" · "+model,status:"completed",fallback:true,grounding:false,provider};
 }
 async function runExternalAIAgentFallback(kind,ctx,env,label,modelState){
@@ -285,7 +289,7 @@ async function runWorkersAIAgentFallback(kind,ctx,env,label){
  if(!guarded.allowed)throw new Error(label+": Workers AI fallback unavailable ("+String(guarded.reason||"quota or binding unavailable")+")");
  const result=guarded.result,raw=result?.response??result?.result??result?.choices?.[0]?.message?.content??result?.output_text??result?.output??result?.content??result;const data=extractFallbackJson(raw);
  if(!data)throw new Error(label+": Workers AI returned empty or malformed JSON (response keys: "+(result&&typeof result==="object"?Object.keys(result).join(","):"none")+")");
- const issue=validateAgent(kind,data,{...ctx,useSearch:false});if(issue)throw new Error(label+": Workers AI response failed validation: "+issue);
+ if(kind==="day")data=normaliseFallbackDay(data,ctx);const issue=validateAgent(kind,data,{...ctx,useSearch:false});if(issue)throw new Error(label+": Workers AI response failed validation: "+issue);
  return {data,sources:[],queries:[],model:"Workers AI · GLM-4.7-Flash fallback",status:"completed",fallback:true,grounding:false,quota:guarded.quota};
 }
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
