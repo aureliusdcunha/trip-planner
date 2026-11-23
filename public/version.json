@@ -1,5 +1,5 @@
 {
-  "version": "1.7.14",
+  "version": "1.7.15",
   "released": "2026-11-23",
-  "releaseName": "Seven-day transaction audit logs"
+  "releaseName": "Authenticated transaction diagnostics viewer"
 }
