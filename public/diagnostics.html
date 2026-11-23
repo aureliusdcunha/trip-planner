@@ -75,7 +75,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
           <div class="filter-actions"><button class="btn" id="saveRetentionBtn" type="button">Save Retention Settings</button><button class="btn amber" id="pruneBtn" type="button">Delete Older Logs</button></div>
         </div>
       </fieldset>
-      <p class="muted" id="retentionHelp">Logs are automatically removed after the configured retention period. Changing this setting also applies cleanup immediately.</p>
+      <p class="muted" id="retentionHelp">This preference is saved only in this browser. When you unlock Diagnostics, the page applies the selected retention period to D1 log records.</p>
       <div id="settingsMessage" class="notice hidden"></div>
     </section>
 
@@ -92,12 +92,12 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       <h3 style="margin:12px 0 8px">Execution timeline</h3><div id="traceTimeline" class="trace-timeline"></div><h3 style="margin:12px 0 8px">Complete transaction record</h3><pre id="detailJson"></pre>
     </section>
   </section>
-  <p class="foot">Transaction records are stored in Cloudflare D1 and automatically expire according to the configured retention period. Request and response payloads may contain trip details; keep this page and its access token private.</p>
+  <p class="foot">Transaction records are stored in Cloudflare D1. The authenticated Diagnostics page applies your browser-local retention preference when opened. Request and response payloads may contain trip details; keep this page and its access token private.</p>
 </main>
 <script>
 (()=> {
   const $ = id => document.getElementById(id);
-  const state = { token: sessionStorage.getItem("tp_diag_token") || "", offset: 0, limit: 50, total: 0, currentLog: null, selectedLogs: new Map(), visibleRows: [] };
+  const state = { token: sessionStorage.getItem("tp_diag_token") || "", offset: 0, limit: 50, total: 0, currentLog: null, selectedLogs: new Map(), visibleRows: [], retentionDays: Number(localStorage.getItem("tp_diag_retention_days")||7) };
   const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
   const dateText = value => { if(!value) return "—"; const d=new Date(value); return Number.isNaN(d.getTime())?value:d.toLocaleString(); };
   const showError = (el,msg) => { el.textContent=msg; el.classList.remove("hidden"); };
@@ -119,7 +119,6 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     try{
       const data=await request("/api/diagnostics?"+queryString());
       state.total=data.total||0;
-      if(data.retention_days){$("retentionDays").value=String(data.retention_days);$("retentionStat").textContent=data.retention_days+" days";}
       const rows=data.transactions||[];
       $("totalCount").textContent=state.total.toLocaleString();
       $("failedCount").textContent=rows.filter(x=>x.outcome!=="success").length.toLocaleString();
@@ -207,7 +206,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       $("detailPanel").scrollIntoView({behavior:"smooth",block:"start"});
     }catch(error){showError($("loadError"),error.message)}
   }
-  $("authForm").addEventListener("submit",async e=>{e.preventDefault();state.token=$("tokenInput").value.trim();hideError($("authError"));try{await request("/api/diagnostics?limit=1");sessionStorage.setItem("tp_diag_token",state.token);setUnlocked(true);state.offset=0;await load()}catch(error){state.token="";showError($("authError"),error.message)}});
+  $("authForm").addEventListener("submit",async e=>{e.preventDefault();state.token=$("tokenInput").value.trim();hideError($("authError"));try{await request("/api/diagnostics?limit=1");sessionStorage.setItem("tp_diag_token",state.token);setUnlocked(true);state.offset=0;await saveRetention(null,false);await load()}catch(error){state.token="";showError($("authError"),error.message)}});
   function selectVisibleRows(checked){
     (state.visibleRows||[]).forEach(row=>{
       const id=String(row.transaction_id);
@@ -224,19 +223,24 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
   $("refreshNowBtn").addEventListener("click",()=>{state.offset=0;load()});
   $("filterTab").addEventListener("click",()=>{ $("filterSettings").classList.remove("hidden");$("listSettings").classList.add("hidden");$("filterTab").classList.add("active");$("listTab").classList.remove("active") });
   $("listTab").addEventListener("click",()=>{ $("listSettings").classList.remove("hidden");$("filterSettings").classList.add("hidden");$("listTab").classList.add("active");$("filterTab").classList.remove("active") });
-  async function saveRetention(deleteBefore){
+  async function saveRetention(deleteBefore,showMessage=true){
     const days=Number($("retentionDays").value);
     if(deleteBefore&&!confirm("Permanently delete all transaction logs completed before "+deleteBefore+"? This cannot be undone."))return;
     const buttons=[$("saveRetentionBtn"),$("pruneBtn")];buttons.forEach(b=>b.disabled=true);
     try{
-      const response=await fetch("/api/diagnostics",{method:"POST",headers:{Authorization:"Bearer "+state.token,"content-type":"application/json"},body:JSON.stringify({action:"update_retention",retention_days:days,delete_before:deleteBefore||null})});
-      const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Unable to save retention settings.");
-      $("retentionStat").textContent=data.retention_days+" days";$("settingsMessage").textContent="Retention saved. "+data.deleted+" older log(s) deleted.";$("settingsMessage").classList.remove("hidden","error");await load();
-    }catch(error){$("settingsMessage").textContent=error.message;$("settingsMessage").classList.remove("hidden");$("settingsMessage").classList.add("error")}
+      localStorage.setItem("tp_diag_retention_days",String(days));state.retentionDays=days;
+      const response=await fetch("/api/diagnostics",{method:"POST",headers:{Authorization:"Bearer "+state.token,"content-type":"application/json"},body:JSON.stringify({action:"apply_retention",retention_days:days,delete_before:deleteBefore||null})});
+      const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Unable to apply retention settings.");
+      $("retentionStat").textContent=days+" days";
+      if(showMessage){$("settingsMessage").textContent="Browser-local retention saved. "+data.deleted+" older log(s) permanently deleted from D1.";$("settingsMessage").classList.remove("hidden","error")}
+      return data;
+    }catch(error){if(showMessage){$("settingsMessage").textContent=error.message;$("settingsMessage").classList.remove("hidden");$("settingsMessage").classList.add("error")}throw error}
     finally{buttons.forEach(b=>b.disabled=false)}
   }
-  $("saveRetentionBtn").addEventListener("click",()=>saveRetention(null));
-  $("pruneBtn").addEventListener("click",()=>{const d=$("deleteBefore").value;if(!d){$("settingsMessage").textContent="Choose a cutoff date first.";$("settingsMessage").classList.remove("hidden");return}saveRetention(d)});
+  $("retentionDays").value=String([1,3,7,14,30,60,90,180,365].includes(state.retentionDays)?state.retentionDays:7);
+  $("retentionStat").textContent=$("retentionDays").value+" days";
+  $("saveRetentionBtn").addEventListener("click",async()=>{try{await saveRetention(null,true);await load()}catch{}});
+  $("pruneBtn").addEventListener("click",async()=>{const d=$("deleteBefore").value;if(!d){$("settingsMessage").textContent="Choose a cutoff date first.";$("settingsMessage").classList.remove("hidden");return}try{await saveRetention(d,true);await load()}catch{}});
   fetch("/version.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(v=>{if(v?.version)$("versionLabel").textContent="Version "+v.version}).catch(()=>{});
   $("clearBtn").addEventListener("click",()=>{["searchInput","endpointFilter","outcomeFilter","statusFilter","fromFilter","toFilter"].forEach(id=>$(id).value="");state.offset=0;load()});
   $("refreshBtn").addEventListener("click",()=>{if(state.token)load()});
@@ -246,7 +250,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
   $("copyBtn").addEventListener("click",async()=>{if(state.currentLog){await navigator.clipboard.writeText(JSON.stringify(state.currentLog,null,2));$("copyBtn").textContent="Copied";setTimeout(()=> $("copyBtn").textContent="Copy JSON",1400)}});
   $("downloadBtn").addEventListener("click",()=>{if(!state.currentLog)return;const blob=new Blob([JSON.stringify(state.currentLog,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="tripplanner-transaction-"+(state.currentLog.transaction_id||"log")+".json";a.click();URL.revokeObjectURL(url)});
   $("logoutBtn").addEventListener("click",()=>{state.token="";sessionStorage.removeItem("tp_diag_token");state.currentLog=null;setUnlocked(false);$("tokenInput").value="";$("detailPanel").classList.add("hidden")});
-  if(state.token){setUnlocked(true);load()}else setUnlocked(false);
+  if(state.token){setUnlocked(true);saveRetention(null,false).then(()=>load()).catch(error=>{state.token="";sessionStorage.removeItem("tp_diag_token");setUnlocked(false);showError($("authError"),error.message)})}else setUnlocked(false);
 })();
 </script>
 </body>
