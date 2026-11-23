@@ -76,6 +76,12 @@ tbody tr:nth-child(even){background:#f8faf9}tbody tr:hover{background:#eaf5ef}
 .lifecycle-footnote{font-size:10px;line-height:1.5;color:#77857f;margin:12px 2px 0}
 #appPanel>section.panel{margin-top:0}
 @media(max-width:760px){.wrap{padding:18px 14px 42px}.top{margin:-18px -14px 20px;padding:17px 15px}.lifecycle-grid{grid-template-columns:1fr}.lifecycle-desc{min-height:0}.stats{grid-template-columns:1fr 1fr}.stat:last-child{grid-column:1/-1}}
+
+  .confirm-overlay{position:fixed;inset:0;z-index:9999;background:rgba(12,24,32,.48);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}
+  .confirm-dialog{width:min(460px,100%);background:#fff;border:1px solid #dce6e2;border-radius:18px;box-shadow:0 24px 70px rgba(10,35,28,.24);padding:24px;color:#17352e}
+  .confirm-icon{width:44px;height:44px;border-radius:13px;background:#fff2df;color:#b76a12;display:grid;place-items:center;font-size:22px;margin-bottom:14px}
+  .confirm-dialog h2{font-size:19px;margin:0 0 8px}.confirm-dialog p{font-size:14px;line-height:1.55;color:#53665f;margin:0 0 18px}.confirm-dialog .confirm-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.confirm-dialog button{border-radius:9px;padding:10px 15px;font-weight:700;cursor:pointer}.confirm-cancel{border:1px solid #d3ded9;background:#fff;color:#38534a}.confirm-accept{border:0;background:#b87519;color:#fff}.confirm-accept:hover{background:#965b0d}
+
 </style>
 </head>
 <body>
@@ -326,10 +332,19 @@ tbody tr:nth-child(even){background:#f8faf9}tbody tr:hover{background:#eaf5ef}
   $("refreshNowBtn").addEventListener("click",()=>{state.offset=0;load()});
   $("filterTab").addEventListener("click",()=>{ $("filterSettings").classList.remove("hidden");$("listSettings").classList.add("hidden");$("transactionListPanel").classList.remove("hidden");$("filterTab").classList.add("active");$("listTab").classList.remove("active") });
   $("listTab").addEventListener("click",()=>{ $("listSettings").classList.remove("hidden");$("filterSettings").classList.add("hidden");$("transactionListPanel").classList.add("hidden");$("listTab").classList.add("active");$("filterTab").classList.remove("active") });
+  function showRetentionConfirm(message){
+    return new Promise(resolve=>{
+      const overlay=$("retentionConfirmOverlay"),text=$("retentionConfirmText"),accept=$("retentionConfirmAccept"),cancel=$("retentionConfirmCancel");
+      text.textContent=message;overlay.classList.remove("hidden");
+      const finish=value=>{overlay.classList.add("hidden");accept.removeEventListener("click",yes);cancel.removeEventListener("click",no);overlay.removeEventListener("click",outside);document.removeEventListener("keydown",escape);resolve(value)};
+      const yes=()=>finish(true),no=()=>finish(false),outside=e=>{if(e.target===overlay)no()},escape=e=>{if(e.key==="Escape")no()};
+      accept.addEventListener("click",yes);cancel.addEventListener("click",no);overlay.addEventListener("click",outside);document.addEventListener("keydown",escape);accept.focus();
+    });
+  }
   async function saveItineraryRetention(){
     const days=Number($("itineraryRetentionDays").value),button=$("saveItineraryRetentionBtn");
     const label=days===0?"never expire":"expire after "+days+" days";
-    if(!confirm("Save completed-itinerary retention: "+label+"?"+(days>0?" Any already-expired completed itineraries will be permanently deleted.":"")))return;
+    if(!(await showRetentionConfirm("Save completed-itinerary retention: "+label+"?"+(days>0?" Any already-expired completed itineraries will be permanently deleted from D1. This cannot be undone.":" Completed itineraries will remain stored until you change this setting."))))return;
     button.disabled=true;
     try{
       const response=await fetch("/api/diagnostics",{method:"POST",headers:{Authorization:"Bearer "+state.token,"content-type":"application/json"},body:JSON.stringify({action:"save_itinerary_retention",itinerary_retention_days:days})});
@@ -384,5 +399,14 @@ tbody tr:nth-child(even){background:#f8faf9}tbody tr:hover{background:#eaf5ef}
   if(state.token){setUnlocked(true);saveRetention(null,false).then(()=>load()).catch(error=>{state.token="";sessionStorage.removeItem("tp_diag_token");setUnlocked(false);showError($("authError"),error.message)})}else setUnlocked(false);
 })();
 </script>
+
+<div class="confirm-overlay hidden" id="retentionConfirmOverlay" role="presentation">
+  <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="retentionConfirmTitle" aria-describedby="retentionConfirmText">
+    <div class="confirm-icon" aria-hidden="true">!</div>
+    <h2 id="retentionConfirmTitle">Confirm itinerary retention</h2>
+    <p id="retentionConfirmText"></p>
+    <div class="confirm-actions"><button type="button" class="confirm-cancel" id="retentionConfirmCancel">Cancel</button><button type="button" class="confirm-accept" id="retentionConfirmAccept">Confirm and save</button></div>
+  </section>
+</div>
 </body>
 </html>
