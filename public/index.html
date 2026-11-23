@@ -245,7 +245,7 @@ function strategyForStyle(){const key=styleKey(trip.bud);return (trip.budget_str
 function activityPartyCost(a){const adult=Number(a.adult_cost_estimate??a.cost_estimate)||0,child=Number(a.child_cost_estimate??a.cost_estimate??adult)||0,infant=Number(a.infant_cost_estimate)||0;return adult*(trip.adults||0)+child*(trip.children||0)+infant*(trip.infants||0)}
 function positiveNumber(value){const n=Number(value);return Number.isFinite(n)&&n>0?n:0}
 function cheapestFlightLeg(segment){const options=(trip.flight_options||[]).filter(f=>String(f.segment||'').trim().toLowerCase()===segment&&positiveNumber(f.price_estimate)>0);return options.sort((a,b)=>positiveNumber(a.price_estimate)-positiveNumber(b.price_estimate))[0]||null}
-function selectedFlightLeg(segment){const options=trip.flight_options||[],liveIdx=trip.liveSelectedFlights?.[segment];if(Number.isInteger(liveIdx)&&options[liveIdx]&&String(options[liveIdx].segment||'').trim().toLowerCase()===segment&&positiveNumber(options[liveIdx].price_estimate)>0)return options[liveIdx];const idx=trip.selectedFlights?.[segment];if(Number.isInteger(idx)&&options[idx]&&String(options[idx].segment||'').trim().toLowerCase()===segment&&positiveNumber(options[idx].price_estimate)>0)return options[idx];return cheapestFlightLeg(segment)}
+function selectedFlightLeg(segment){const options=trip.flight_options||[],liveIdx=trip.liveSelectedFlights?.[segment];if(Number.isInteger(liveIdx)&&options[liveIdx]&&String(options[liveIdx].segment||'').trim().toLowerCase()===segment&&positiveNumber(options[liveIdx].price_estimate)>0)return options[liveIdx];const idx=trip.selectedFlights?.[segment];if(Number.isInteger(idx)&&options[idx]&&String(options[idx].segment||'').trim().toLowerCase()===segment&&positiveNumber(options[idx].price_estimate)>0)return options[idx];return null}
 function flightFareForLeg(leg,key,defaultRatio){if(!leg)return 0;const value=leg[key];if(value!==undefined&&value!==null&&value!==''&&Number.isFinite(Number(value))&&Number(value)>=0)return Number(value);return positiveNumber(leg.price_estimate)*defaultRatio}
 function tierPartyMealRate(style,baseName){
  const tier=styleKey(tierForStyle(style)),all=(trip.dining||[]).filter(x=>styleKey(x.tier)===tier),base=String(baseName||'').toLowerCase();
@@ -262,13 +262,9 @@ function budgetCalc(){
  // Flight cards are one-way per passenger. Use the lowest priced outbound and return options;
  // an Alternative is a choice, not another leg, so it is never added to the round trip.
  const outbound=selectedFlightLeg('outbound'),returnFlight=selectedFlightLeg('return'),hasRoundTripOptions=!!(outbound&&returnFlight);
- const fallbackFare=positiveNumber(b.international_flight_per_person);
- const fallbackAdult=positiveNumber(b.international_flight_adult)||fallbackFare;
- const fallbackChild=positiveNumber(b.international_flight_child)||fallbackAdult;
- const fallbackInfant=positiveNumber(b.international_flight_infant)||fallbackAdult*.1;
- const flightAdult=hasRoundTripOptions?flightFareForLeg(outbound,'adult_price_per_person',1)+flightFareForLeg(returnFlight,'adult_price_per_person',1):fallbackAdult;
- const flightChild=hasRoundTripOptions?flightFareForLeg(outbound,'child_price_per_person',1)+flightFareForLeg(returnFlight,'child_price_per_person',1):fallbackChild;
- const flightInfant=hasRoundTripOptions?flightFareForLeg(outbound,'infant_price_per_person',.1)+flightFareForLeg(returnFlight,'infant_price_per_person',.1):fallbackInfant;
+ const flightAdult=hasRoundTripOptions?flightFareForLeg(outbound,'adult_price_per_person',1)+flightFareForLeg(returnFlight,'adult_price_per_person',1):0;
+ const flightChild=hasRoundTripOptions?flightFareForLeg(outbound,'child_price_per_person',1)+flightFareForLeg(returnFlight,'child_price_per_person',1):0;
+ const flightInfant=hasRoundTripOptions?flightFareForLeg(outbound,'infant_price_per_person',.1)+flightFareForLeg(returnFlight,'infant_price_per_person',.1):0;
  const flights=flightAdult*adults+flightChild*children+flightInfant*infants,local=positiveNumber(b.local_transport_total);
  const wantedTier=hotelTierForStyle(trip.hotelStyle||trip.bud);let hotel=0,hotelFound=false;
  (trip.areas||[]).forEach(area=>{const areaNights=Number((String(area.nights||'').match(/\d+/)||[])[0])||0;const options=area.hotel_options||[];const option=options.find(h=>styleKey(h.tier)===wantedTier);if(option&&positiveNumber(option.price_per_night)>0){hotel+=positiveNumber(option.price_per_night)*rooms*areaNights;hotelFound=true}else hotel+=positiveNumber(b.hotel_per_room_per_night)*rooms*areaNights});
@@ -299,7 +295,7 @@ function budgetCalc(){
  const sharedPerTraveller=(local+hotel+activities+food+shopping)*(1+contingencyPercent/100)/pax;
  const perAdultWithoutExtras=flightAdult+sharedBasePerTraveller,perChildWithoutExtras=flightChild+sharedBasePerTraveller,perInfantWithoutExtras=flightInfant+sharedBasePerTraveller;
  const perAdult=flightAdult*(1+contingencyPercent/100)+sharedPerTraveller,perChild=flightChild*(1+contingencyPercent/100)+sharedPerTraveller,perInfant=flightInfant*(1+contingencyPercent/100)+sharedPerTraveller;
- return {code,pax,adults,children,infants,rooms,nights,flights,flightAdult,flightChild,flightInfant,flightSource:hasRoundTripOptions?'Outbound + return flight options':'Budget researcher fallback',perAdult,perChild,perInfant,perAdultWithoutExtras,perChildWithoutExtras,perInfantWithoutExtras,averageWithoutExtras:subtotalWithoutShopping/pax,averageWithExtras:total/pax,local,hotel,activities,food,foodSource:hasCompleteMealPrices?'Timed itinerary meals':fallbackDiningFood>0?'Selected dining tier':'Daily food allowance',shopping,contingency,contingencyWithoutShopping,total,totalWithoutShopping,rate,home:rate>0?total*rate:null,per:total/pax,tier,hasRoundTripOptions};
+ return {code,pax,adults,children,infants,rooms,nights,flights,flightAdult,flightChild,flightInfant,flightSource:hasRoundTripOptions?'Selected outbound + return flights':'No complete round-trip selection · flights excluded',perAdult,perChild,perInfant,perAdultWithoutExtras,perChildWithoutExtras,perInfantWithoutExtras,averageWithoutExtras:subtotalWithoutShopping/pax,averageWithExtras:total/pax,local,hotel,activities,food,foodSource:hasCompleteMealPrices?'Timed itinerary meals':fallbackDiningFood>0?'Selected dining tier':'Daily food allowance',shopping,contingency,contingencyWithoutShopping,total,totalWithoutShopping,rate,home:rate>0?total*rate:null,per:total/pax,tier,hasRoundTripOptions};
 }
 function render(){ $('report').classList.remove('hidden');$('heroTitle').textContent=$('dest').value+' · '+$('d1').value+' to '+$('d2').value;const homeCurrency=trip.budget.home_currency||$('cur').value;$('heroIntro').textContent=trip.overview+' · All prices in '+homeCurrency+' first; local amounts in brackets.';const c=budgetCalc();const partyLabel=c.adults+' adults · '+c.children+' children · '+c.infants+' infants';const stats=[[trip.days.length+' days','Trip duration'],[trip.areas.length+' bases','Suggested bases'],[c.pax+' travellers',partyLabel],[fmt(trip.destination_currency)+' ('+trip.currency_code+')','Local currency'],[money(c.total,c.code),'Estimated total · '+(trip.budget.home_currency||$('cur').value)]];$('stats').replaceChildren(...stats.map(([v,k])=>{const x=el('div','stat');add(x,el('b','',v),el('span','',k));return x}));const visibleSections=[...baseSections.slice(0,6),...(trip.includeShopping!==false?['Shopping guide']:[]),...baseSections.slice(6)];if(active==='Shopping guide'&&!visibleSections.includes(active))active='Overview';$('tabs').replaceChildren(...visibleSections.map(t=>{const b=el('button','tab'+(active===t?' active':''),t);b.type='button';b.onclick=()=>{active=t;render()};return b}));renderContent()}
 function saveTripPdf(){
@@ -624,7 +620,7 @@ function renderContent(){
   const table=el('table','budget-table');
   const tableHead=el('tr');const categoryHead=el('th','','Category');categoryHead.colSpan=2;tableHead.append(categoryHead,el('th','','Estimate'));table.append(tableHead);
   const addBudgetRow=(label,value,emphasize=false,control=null)=>{const tr=el('tr'),a=el('td',emphasize?'budget-total':'',label),choice=el('td','budget-choice'),v=el('td',emphasize?'budget-total':'',value);if(control)choice.append(control);else{a.colSpan=2;}add(tr,a,...(control?[choice]:[]),v);table.append(tr)};
-  addBudgetRow('International flights · whole party, round trip',money(c.flights,c.code));
+  addBudgetRow(c.hasRoundTripOptions?'International flights · selected round trip':'International flights · not selected (excluded)',money(c.flights,c.code));
   addBudgetRow('Local transport',money(c.local,c.code));
   addBudgetRow('Accommodation · '+(trip.hotelStyle||trip.bud)+' tier ('+c.rooms+' rooms × '+c.nights+' nights)',money(c.hotel,c.code),false,stylePicker(trip.hotelStyle||trip.bud,value=>{trip.hotelStyle=value;render()}));
   addBudgetRow('Activities & tickets',money(c.activities,c.code));
@@ -639,7 +635,7 @@ function renderContent(){
   add(totalRow,totalLabel,noShopping,withShopping);table.append(totalRow);
   s.append(table);
   const flightRates=[c.adults+' adults × '+money(c.flightAdult,c.code),...(c.children?[c.children+' children × '+money(c.flightChild,c.code)]:[]),...(c.infants?[c.infants+' infants × '+money(c.flightInfant,c.code)]:[])].join(' · ');
-  s.append(el('p','muted','Round-trip airfare per traveller: '+flightRates+' · Whole-party flight subtotal: '+money(c.flights,c.code)+'. '+(c.hasRoundTripOptions?'Calculated from the outbound and return one-way cards; Alternative fares are not added.':'Flight cards did not contain both legs, so the budget researcher round-trip fare is used as a fallback.')));
+  s.append(el('p','muted',c.hasRoundTripOptions?'Round-trip airfare per traveller: '+flightRates+' · Whole-party flight subtotal: '+money(c.flights,c.code)+'. Calculated only from the explicitly selected outbound and return flight cards; alternative fares are not added.':'No complete outbound + return flight selection. Flight costs are excluded from the budget until both legs are selected; AI/researcher fallback fares are never silently included.'));
   s.append(el('p','muted','* The first total excludes shopping, miscellaneous and contingency. The second includes all expenses and contingency.'));
   const perTraveller=el('div','grid');
   const dualTravellerCard=(title,baseAmount,fullAmount,note)=>{
