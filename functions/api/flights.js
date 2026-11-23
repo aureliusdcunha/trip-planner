@@ -235,4 +235,16 @@ async function handleFlightsPost(context){
   return json({error:error?.message||"Flight price search failed."},502);
  }
 }
+// Reuse the exact provider-backed flight engine from trip generation without an HTTP self-fetch.
+export async function searchFlightsForPlan(context,body){
+ const request=new Request(new URL("/api/flights",context.request.url),{
+  method:"POST",
+  headers:{"content-type":"application/json"},
+  body:JSON.stringify({...body,action:"search"})
+ });
+ const response=await handleFlightsPost({...context,request});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(data.error||"Live flight provider search failed.");
+ return data;
+}
 export async function onRequestPost(context){return withTransactionLog(context,"flights",()=>handleFlightsPost(context));}
