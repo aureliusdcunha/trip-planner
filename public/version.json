@@ -1,5 +1,5 @@
 {
-  "version": "1.7.25",
+  "version": "1.7.26",
   "released": "2026-11-23",
-  "releaseName": "Four-column flight cards and default collapsed outbound and return sections"
+  "releaseName": "Correct flight fare currency conversion for trip budgets"
 }
