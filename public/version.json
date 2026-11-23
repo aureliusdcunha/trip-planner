@@ -1,5 +1,5 @@
 {
-  "version": "1.7.29",
+  "version": "1.7.30",
   "released": "2026-11-23",
-  "releaseName": "Google Flights provider links use home currency"
+  "releaseName": "Improve diagnostics log payload readability"
 }
