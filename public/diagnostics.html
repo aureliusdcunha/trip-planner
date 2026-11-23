@@ -147,8 +147,13 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     const button=$("downloadSelectedBtn"),original=button.textContent;
     button.disabled=true;button.textContent="Preparing "+ids.length+" logs…";
     try{
-      const data=await request("/api/diagnostics?ids="+encodeURIComponent(ids.join(",")));
-      const logs=data.logs||[];
+      const logs=[];
+      for(let i=0;i<ids.length;i+=100){
+        button.textContent="Preparing "+Math.min(i+100,ids.length)+" / "+ids.length+"…";
+        const batch=ids.slice(i,i+100);
+        const data=await request("/api/diagnostics?ids="+encodeURIComponent(batch.join(",")));
+        logs.push(...(data.logs||[]));
+      }
       if(!logs.length)throw new Error("No selected transaction logs could be retrieved.");
       const bundle={exported_at:new Date().toISOString(),selected_count:ids.length,downloaded_count:logs.length,missing_ids:ids.filter(id=>!logs.some(log=>String(log.transaction_id)===id)),logs};
       const blob=new Blob([JSON.stringify(bundle,null,2)],{type:"application/json"});
