@@ -29,6 +29,21 @@ const schemas={
  }),
  day:obj({days:arr(obj({date:str,base:str,title:str,subtitle:str,pace:str,activities:arr(obj({time:str,name:str,category:str,description:str,duration:str,transport:str,transport_title:str,transport_details:str,cost_estimate:num,adult_cost_estimate:num,child_cost_estimate:num,infant_cost_estimate:num,booking_url:str,child_friendly:str,kid_note:str,shopping_note:str})),meals:arr(obj({time:str,meal:str,suggestion:str,price_estimate:num,adult_price_estimate:num,child_price_estimate:num,infant_price_estimate:num})),overnight:str,day_estimate:num}))})
 };
+function normaliseFlightCurrency(options,fromCurrency,toCurrency,rate){
+ const from=String(fromCurrency||"").toUpperCase(),to=String(toCurrency||"").toUpperCase(),fx=Number(rate);
+ if(!Array.isArray(options)||!from||!to||from===to||!(fx>0))return {converted:0,from,to,rate:fx||null};
+ let converted=0;
+ for(const option of options){
+  const declared=String(option.provider_currency||option.currency||from).toUpperCase();
+  if(declared!==from)continue;
+  for(const key of ["price_estimate","adult_price_per_person","child_price_per_person","infant_price_per_person","provider_total_amount"]){
+   const value=Number(option[key]);if(Number.isFinite(value)&&value>0)option[key]=Number((value/fx).toFixed(2));
+  }
+  option.provider_currency_original=from;option.provider_currency=to;option.currency=to;option.currency_conversion_rate=fx;
+  option.currency_conversion_note="Converted from "+from+" to "+to+" using reference rate "+fx;converted++;
+ }
+ return {converted,from,to,rate:fx};
+}
 async function getExchangeRate(base,quote){
  const from=String(base||"").toUpperCase(),to=String(quote||"").toUpperCase();
  if(!/^[A-Z]{3}$/.test(from)||!/^[A-Z]{3}$/.test(to))return null;
@@ -423,12 +438,12 @@ async function pool(tasks,limit,worker,onFailure){
  });
  await Promise.all(runners);return results;
 }
-async function runLiveFlightResearch(context,trip,emit){
+async function runLiveFlightResearch(context,trip,emit,searchCurrency=trip.cur){
  traceEvent(context,"flight_research","started",{origin:trip.from,destination:trip.dest,departure:trip.d1,return:trip.d2,provider:"shared flight search engine"});
  emit({type:"agent_search",agent:"Flight researcher",query:"Live Google Flights provider search: "+trip.from+" to "+trip.dest+" outbound "+trip.d1+" and return "+trip.d2});
  const result=await searchFlightsForPlan(context,{
   origin:trip.from,destination:trip.dest,departureDate:trip.d1,returnDate:trip.d2,
-  currency:trip.cur,adults:trip.adults,children:trip.children,infants:trip.infants,
+  currency:searchCurrency||trip.cur,adults:trip.adults,children:trip.children,infants:trip.infants,
   cabin:trip.cabin||"Any",stops:trip.stops||"Any"
  });
  const options=Array.isArray(result.options)?result.options:[];
@@ -515,7 +530,8 @@ async function handlePlanPost(context){
        const label=kind==="day"?"Day planner · "+date:kind==="transport"?"Transport researcher":kind==="flights"?"Flight researcher":kind+" researcher · "+areaName;
        const ctx={trip,useSearch,areas:report.areas||[],area,label,date,dayNumber:(report.days||[]).findIndex(x=>x.date===date)+1,base:(report.days||[]).find(x=>x.date===date)?.base||""};
        traceEvent(context,"retry_agent:"+kind,"started",{area:areaName,date});
-       const result=kind==="flights"?await runLiveFlightResearch(context,trip,emit):await runAgent(kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
+       const retryCurrency=String(report.currency_code||report.budget?.currency||trip.cur).toUpperCase();
+        const result=kind==="flights"?await runLiveFlightResearch(context,trip,emit,retryCurrency):await runAgent(kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
        traceEvent(context,"retry_agent:"+kind,"success",{model:result.model});
        if(kind==="flights"){const data=result.data;report.flight_options=data.flight_options||[];report.getting_there=data.getting_there||"";}
        else if(kind==="stay"){if(!area)throw new Error("The requested area was not found in the saved report.");area.hotel_options=result.data.hotel_options||[];}
@@ -533,6 +549,8 @@ async function handlePlanPost(context){
        emit({type:"stage",stage:"cache",message:"Matching saved itinerary found. Loading the database copy, then refreshing live flight prices for the current dates…",agentTotal:1,cacheHit:true});
        const combined=JSON.parse(JSON.stringify(cachedTrip.report));
        combined.request_context={trip,useSearch,maxBases};
+       const cachedFlightCurrency=normaliseFlightCurrency(combined.flight_options,combined.budget?.home_currency||trip.cur,combined.currency_code||combined.budget?.currency,combined.budget?.exchange_rate_to_home);
+       if(cachedFlightCurrency.converted)traceEvent(context,"flight_currency_normalisation","success",cachedFlightCurrency);
        combined.research=combined.research||{};
        combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
        combined.research_unavailable=Array.isArray(combined.research_unavailable)?combined.research_unavailable:[];
@@ -540,7 +558,8 @@ async function handlePlanPost(context){
        let flightRefresh={ok:false,error:"Live flight refresh did not complete."};
        traceEvent(context,"cache_flight_refresh","started",{origin:trip.from,destination:trip.dest,departure:trip.d1,return:trip.d2,provider:"SerpApi with configured fallbacks"});
        try{
-        const refreshed=await runLiveFlightResearch(context,trip,emit);
+        const localFlightCurrency=String(combined.currency_code||combined.budget?.currency||trip.cur).toUpperCase();
+        const refreshed=await runLiveFlightResearch(context,trip,emit,localFlightCurrency);
         combined.flight_options=refreshed.data.flight_options;
         combined.getting_there=refreshed.data.getting_there;
         combined.liveFlightSearchAt=new Date().toISOString();
@@ -648,6 +667,8 @@ async function handlePlanPost(context){
       const homeCurrency=String(trip.cur||"INR").toUpperCase();
       const fxRate=await fxRatePromise;
       const flightResearch=specialistResults.find(x=>x.kind==="flights")?.data;
+       const flightCurrencyNormalisation=normaliseFlightCurrency(flightResearch?.flight_options,homeCurrency,localCurrency,fxRate?.rate);
+       if(flightCurrencyNormalisation.converted)traceEvent(context,"flight_currency_normalisation","success",flightCurrencyNormalisation);
       const flightRun=openingRuns.find(x=>x.ok&&x.value?.kind==="flights");
       if(!flightRun?.ok||!flightResearch?.flight_options?.length){
        combined.flight_options=[];
