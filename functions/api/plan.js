@@ -275,7 +275,7 @@ async function runOpenAICompatibleFallback(provider,kind,ctx,env,label){
 }
 async function runExternalAIAgentFallback(kind,ctx,env,label,modelState){
  const failures=[],gate=modelState?.fallbackGate;let release=null;
- if(gate){const previous=gate.tail;gate.tail=new Promise(resolve=>release=resolve);await previous;const delay=Math.max(0,gate.nextAt-Date.now());if(delay)await new Promise(resolve=>setTimeout(resolve,delay));gate.nextAt=Date.now()+4500}
+ if(gate){const previous=gate.tail;gate.tail=new Promise(resolve=>release=resolve);await previous;const delay=Math.max(0,gate.nextAt-Date.now());if(delay)await new Promise(resolve=>setTimeout(resolve,delay));const outputBudget=({route:1000,flights:1400,transport:1200,stay:1500,attractions:2200,dining:1800,guide:2600,day:3000}[kind]||1600);const estimatedTokens=Math.ceil((promptFor(kind,{...ctx,useSearch:false}).length+JSON.stringify(schemas[kind]||{}).length)/4)+outputBudget;gate.nextAt=Date.now()+Math.max(6000,Math.ceil(estimatedTokens*60000/6500))}
  try{
   for(const provider of ["Groq","OpenRouter"]){try{const result=await runOpenAICompatibleFallback(provider,kind,ctx,env,label);if(result)return result}catch(error){failures.push(String(error.message||error))}}
   try{const result=await runWorkersAIAgentFallback(kind,ctx,env,label);if(result)return result}catch(error){failures.push(String(error.message||error))}
