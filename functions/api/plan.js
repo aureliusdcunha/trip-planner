@@ -531,7 +531,7 @@ async function handlePlanPost(context){
         }
         combined.research=combined.research||{};
         combined.research.flight_search_status="unavailable";
-        combined.research.flight_search_requested=!!useSearch;
+        combined.research.flight_search_requested=true;
         combined.research.flight_search_executed=!!(freshFlight?.queries?.length);
         combined.research.flight_verified_result_count=0;
         combined.research.flight_failure_reason=flightFailure?.message||"No verifiable flight options were returned.";
@@ -562,7 +562,7 @@ async function handlePlanPost(context){
        combined.research=combined.research||{};
        if(!flightFailure&&freshFlight&&combined.flight_options.length){
         combined.research.flight_search_status="completed";
-        combined.research.flight_search_requested=!!useSearch;
+        combined.research.flight_search_requested=true;
         combined.research.flight_search_executed=true;
         combined.research.flight_verified_result_count=combined.flight_options.length;
        }
@@ -652,14 +652,14 @@ async function handlePlanPost(context){
        guide.caveats.push("Live flight research was unavailable or could not be verified. Flight costs are excluded from the estimate until real fares are added.");
        combined.research=combined.research||{};
        combined.research.flight_search_status="unavailable";
-       combined.research.flight_search_requested=!!useSearch;
+       combined.research.flight_search_requested=true;
        combined.research.flight_search_executed=false;
        combined.research.flight_verified_result_count=0;
        combined.research.flight_failure_reason=flightRun?.error||"No verified flight options returned.";
       }else{
        combined.research=combined.research||{};
        combined.research.flight_search_status="completed";
-       combined.research.flight_search_requested=!!useSearch;
+       combined.research.flight_search_requested=true;
        combined.research.flight_search_executed=true;
        combined.research.flight_verified_result_count=flightResearch.flight_options.length;
       }
