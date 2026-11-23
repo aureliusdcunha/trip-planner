@@ -1,5 +1,5 @@
 {
-  "version": "1.7.35",
+  "version": "1.7.36",
   "released": "2026-11-23",
-  "releaseName": "Fix default collapsed outbound and return flight sections"
+  "releaseName": "Use Gemini fare ranges for plan flights; SerpApi only for manual flight search"
 }
