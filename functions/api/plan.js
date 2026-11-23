@@ -530,19 +530,50 @@ async function handlePlanPost(context){
        emit({type:"result",data:report});return;
       }
       if(cachedTrip?.report){
-       emit({type:"stage",stage:"cache",message:"Found a matching saved trip report. Reusing the database copy without running AI or flight-provider searches.",agentTotal:0,cacheHit:true});
+       emit({type:"stage",stage:"cache",message:"Matching saved itinerary found. Loading the database copy, then refreshing live flight prices for the current dates…",agentTotal:1,cacheHit:true});
        const combined=JSON.parse(JSON.stringify(cachedTrip.report));
        combined.request_context={trip,useSearch,maxBases};
-       combined.cache={hit:true,saved:true,createdAt:cachedTrip.createdAt,reusedWithoutResearch:true};
        combined.research=combined.research||{};
-       if(!Array.isArray(combined.flight_options)||!combined.flight_options.length){
-        combined.research.flight_search_status=combined.research.flight_search_status||"not_cached";
-        combined.research.flight_failure_reason=combined.research.flight_failure_reason||"This saved report predates database storage of verified live flight results. No new search was started.";
-        combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
-        combined.caveats.push("This itinerary was reused from the database. It contains no saved verified live flight results; use the Flights tab only if you want to run a separate flight-price search.");
+       combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
+       combined.research_unavailable=Array.isArray(combined.research_unavailable)?combined.research_unavailable:[];
+       emit({type:"agent_started",agent:"Live flight-price refresh",completed:0,total:1});
+       let flightRefresh={ok:false,error:"Live flight refresh did not complete."};
+       traceEvent(context,"cache_flight_refresh","started",{origin:trip.from,destination:trip.dest,departure:trip.d1,return:trip.d2,provider:"SerpApi with configured fallbacks"});
+       try{
+        const refreshed=await runLiveFlightResearch(context,trip,emit);
+        combined.flight_options=refreshed.data.flight_options;
+        combined.getting_there=refreshed.data.getting_there;
+        combined.liveFlightSearchAt=new Date().toISOString();
+        combined.liveFlightProvider=refreshed.model;
+        combined.liveFlightSearchKey=[trip.from,trip.dest,trip.d1,trip.d2,trip.cur].join("|");
+        combined.research.flight_search_status="completed";
+        combined.research.flight_provider=refreshed.model;
+        combined.research.flight_refreshed_at=combined.liveFlightSearchAt;
+        combined.research.flight_option_count=combined.flight_options.length;
+        combined.research.flight_source_count=refreshed.sources.length;
+        combined.research.flight_search_queries=refreshed.queries.length;
+        combined.research_unavailable=combined.research_unavailable.filter(x=>x.kind!=="flights");
+        combined.caveats=combined.caveats.filter(x=>!/contains no saved verified live flight results|no new search was started/i.test(String(x)));
+        flightRefresh={ok:true,options:combined.flight_options.length,provider:refreshed.model};
+        traceEvent(context,"cache_flight_refresh","success",{provider:refreshed.model,options:combined.flight_options.length,sources:refreshed.sources.length,searches:refreshed.queries.length});
+        emit({type:"agent_completed",agent:"Live flight-price refresh",completed:1,total:1,sourceCount:refreshed.sources.length,searchCount:refreshed.queries.length});
+       }catch(error){
+        const message=error?.message||String(error);
+        combined.research.flight_search_status="failed";
+        combined.research.flight_failure_reason=message;
+        combined.research.flight_refreshed_at=new Date().toISOString();
+        combined.research_unavailable=combined.research_unavailable.filter(x=>x.kind!=="flights");
+        combined.research_unavailable.push({kind:"flights",label:"Live flight-price refresh",error:message});
+        combined.caveats=combined.caveats.filter(x=>!/flight.*refresh|verified live flight/i.test(String(x)));
+        combined.caveats.push("Live flight-price refresh failed: "+message+". Previously saved itinerary details are retained; flight prices are not represented as current.");
+        flightRefresh={ok:false,error:message};
+        traceEvent(context,"cache_flight_refresh","error",{message,stack:error?.stack||"",preserved_cached_options:Array.isArray(combined.flight_options)?combined.flight_options.length:0});
+        emit({type:"agent_failed",agent:"Live flight-price refresh",error:message});
        }
-       if(cacheKeyUsed!==cacheKey)await writeTripReportCache(env,cacheKey,cacheInput,combined);
-       emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt});
+       combined.cache={hit:true,saved:true,createdAt:cachedTrip.createdAt,flightsRefreshed:flightRefresh.ok,flightRefresh};
+       const saved=await writeTripReportCache(env,cacheKey,cacheInput,combined);
+       combined.cache.saved=saved;
+       emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt,flightsRefreshed:flightRefresh.ok});
        return;
       }
       if(forceRefresh)emit({type:"stage",stage:"cache_refresh",message:"Refreshing all trip research as requested…",agentTotal:0,cacheRefresh:true});
