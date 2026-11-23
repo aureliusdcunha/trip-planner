@@ -1,5 +1,5 @@
 {
-  "version": "1.7.34",
+  "version": "1.7.35",
   "released": "2026-11-23",
-  "releaseName": "Show counts on all diagnostics timeline filters"
+  "releaseName": "Fix default collapsed outbound and return flight sections"
 }
