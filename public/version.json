@@ -1,5 +1,5 @@
 {
-  "version": "1.7.20",
+  "version": "1.7.21",
   "released": "2026-11-23",
-  "releaseName": "Multi-select diagnostics log download"
+  "releaseName": "Admin-style diagnostics console and configurable log retention"
 }
