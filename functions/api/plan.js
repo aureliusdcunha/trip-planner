@@ -324,7 +324,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    // A rate-limited model is skipped immediately; do not stall every researcher on its cooldown.
    const next=advanceModel(agentModelState,model);
    if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Gemini rate-limited "+model+". Skipping it and switching to "+next+"."});continue}
-   throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details);
+   const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details);
   }
   if(!response.ok){
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
@@ -337,7 +337,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
     if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Model "+model+" is temporarily overloaded (HTTP "+response.status+"). Switching immediately to "+next+"."});continue}
    }
    if(useSearch&&(response.status===400||response.status===403))throw new Error(label+": Gemini rejected the Google Search request (HTTP "+response.status+"). Search grounding may require an eligible billing-enabled project or the provider may have rejected the request configuration. "+details);
-   if(transient)throw new Error(label+": all configured Gemini models are currently overloaded or unavailable. Please wait a few minutes and retry. Last response: HTTP "+response.status+". "+details);
+   if(transient){const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are currently overloaded or unavailable. Please wait a few minutes and retry. Last response: HTTP "+response.status+". "+details);}
    throw new Error(label+": Gemini returned HTTP "+response.status+". "+details);
   }
   if(!response.body){releaseRequestSlot(requestGate);throw new Error(label+": Gemini returned no response stream.")}
@@ -387,14 +387,14 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
     continue;
    }
    if(canRetry){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"The response stream was interrupted; retrying once."});continue}
-   throw new Error(label+": response stream interrupted: "+(readError?.message||"network error"));
+   const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": response stream interrupted: "+(readError?.message||"network error"));
   }
   if(streamError){
    if(isCapacityError(streamError)){
     disableModelForRequest(agentModelState,model,"stream capacity error");
     const next=advanceModel(agentModelState,model);
     if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Model "+model+" reported high demand. Switching immediately to "+next+"."});continue}
-    throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please retry later. "+streamError);
+    const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please retry later. "+streamError);
    }
    throw new Error(label+": "+streamError);
   }
