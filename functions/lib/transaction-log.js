@@ -10,6 +10,20 @@ const TABLE=`CREATE TABLE IF NOT EXISTS transaction_logs (
  log_json TEXT NOT NULL
 )`;
 const MAX_LOG_CHARS=900000;
+const MAX_TRACE_EVENTS=500;
+function traceSafe(value,depth=0){
+ if(depth>5)return "[depth-limited]";
+ if(value===null||typeof value==="number"||typeof value==="boolean")return value;
+ if(typeof value==="string")return value.slice(0,1500);
+ if(Array.isArray(value))return value.slice(0,30).map(v=>traceSafe(v,depth+1));
+ if(typeof value==="object"){const out={};for(const [k,v] of Object.entries(value).slice(0,40)){if(/api.?key|authorization|token|secret|password|cookie|prompt|content/i.test(k)){out[k]="[REDACTED]";continue}out[k]=traceSafe(v,depth+1)}return out}
+ return String(value);
+}
+export function traceEvent(context,stage,status="info",details={}){
+ const trace=context?.__transactionTrace;if(!trace)return;
+ if(trace.events.length>=MAX_TRACE_EVENTS){trace.dropped++;return}
+ trace.events.push({at:new Date().toISOString(),elapsed_ms:Date.now()-trace.started_at,stage:String(stage).slice(0,100),status,details:traceSafe(details)});
+}
 function safeValue(value,depth=0){
  if(depth>8)return "[depth-limited]";
  if(value===null||typeof value==="number"||typeof value==="boolean")return value;
@@ -40,6 +54,9 @@ export async function withTransactionLog(context,endpoint,handler){
  const {request,env}=context;
  const id=crypto.randomUUID();
  const start=Date.now(),startedAt=new Date(start).toISOString();
+ const trace={id,started_at:start,events:[],dropped:0};
+ context.__transactionTrace=trace;
+ traceEvent(context,"request_received","success",{method:request.method,path:new URL(request.url).pathname});
  let requestData=null;
  try{requestData=await request.clone().text()}catch{}
  const requestRecord={method:request.method,url:new URL(request.url).pathname,headers:{contentType:request.headers.get("content-type"),userAgent:request.headers.get("user-agent")},body:requestData};
@@ -48,15 +65,17 @@ export async function withTransactionLog(context,endpoint,handler){
   catch{requestRecord.body=requestRecord.body.slice(0,20000)}
  }
  let response,handlerError=null;
- try{response=await handler()}catch(error){handlerError={name:error?.name||"Error",message:String(error?.message||error),stack:String(error?.stack||"").slice(0,5000)};response=new Response(JSON.stringify({error:"Internal server error.",transactionId:id}),{status:500,headers:{"content-type":"application/json"}})}
+ traceEvent(context,"handler_started","info",{endpoint});
+ try{response=await handler()}catch(error){handlerError={name:error?.name||"Error",message:String(error?.message||error),stack:String(error?.stack||"").slice(0,5000)};traceEvent(context,"handler_exception","error",handlerError);response=new Response(JSON.stringify({error:"Internal server error.",transactionId:id}),{status:500,headers:{"content-type":"application/json"}})}
  const status=response.status;
+ traceEvent(context,"handler_completed",status>=500?"error":status>=400?"warning":"success",{http_status:status});
  const cloned=response.clone();
  const capture=(async()=>{
   const raw=await bodyText(cloned);
   let responseBody=raw;
   try{responseBody=safeValue(JSON.parse(raw))}catch{}
   const completedAt=new Date().toISOString();
-  let log={transaction_id:id,endpoint,started_at:startedAt,completed_at:completedAt,duration_ms:Date.now()-start,http_status:status,outcome:handlerError?"exception":status>=500?"server_error":status>=400?"client_error":"success",request:requestRecord,response:responseBody,error:handlerError};
+  let log={transaction_id:id,trace_id:id,endpoint,started_at:startedAt,completed_at:completedAt,duration_ms:Date.now()-start,http_status:status,outcome:handlerError?"exception":status>=500?"server_error":status>=400?"client_error":"success",trace_events:trace.events,trace_events_dropped:trace.dropped,request:requestRecord,response:responseBody,error:handlerError};
   let serialized=JSON.stringify(log);
   if(serialized.length>MAX_LOG_CHARS){log={...log,request:{...requestRecord,body:"[omitted: transaction log exceeded 900KB]"},response:"[omitted: transaction log exceeded 900KB]",truncated:true};serialized=JSON.stringify(log)}
   try{await persist(env,log)}catch(error){console.error("Transaction log persistence failed",id,error?.message||error)}
