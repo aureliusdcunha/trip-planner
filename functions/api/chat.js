@@ -29,11 +29,12 @@ async function gemini(model,key,input){
  try{while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();frames.forEach(parse)}buffer+=decoder.decode();if(buffer.trim())parse(buffer)}finally{try{reader.releaseLock()}catch{}}
  if(failure)throw new Error(failure);if(!answer.trim())throw new Error("Gemini returned an empty response.");return {answer:answer.trim(),sources:safeSources(steps)};
 }
-async function handleChatPost({request,env}){
+async function handleChatPost(context){
+ const {request,env}=context;
  try{
   const origin=request.headers.get("origin");if(origin&&origin!==new URL(request.url).origin)return J({error:"Forbidden request."},403);
   let body;try{body=await request.json()}catch{return J({error:"Invalid request."},400)}
-  traceEvent(arguments[0],"request_parsed","success",{history_messages:Array.isArray(body.history)?body.history.length:0});
+  traceEvent(context,"request_parsed","success",{history_messages:Array.isArray(body.history)?body.history.length:0});
   const message=clip(body.message,2000).trim();if(!message)return J({error:"Enter a question first."},400);
   const history=Array.isArray(body.history)?body.history.slice(-12).map(x=>({role:x?.role==="assistant"?"assistant":"user",content:clip(x?.content,1800)})).filter(x=>x.content):[];
   const t=body.trip&&typeof body.trip==="object"?body.trip:null;
@@ -53,9 +54,9 @@ async function handleChatPost({request,env}){
   const order=[...new Set(preferred)].filter(x=>configured[x]);
   if(!order.length)return J({error:"No AI provider is configured. Add at least one provider API key in Cloudflare Pages secrets."},503);
   const failures=[];
-  traceEvent(arguments[0],"ai_provider_selection","success",{provider_order:order});
+  traceEvent(context,"ai_provider_selection","success",{provider_order:order});
   for(const provider of order){
-   traceEvent(arguments[0],"ai_provider:"+provider,"started",{model:configured[provider]?.model});
+   traceEvent(context,"ai_provider:"+provider,"started",{model:configured[provider]?.model});
    const cfg=configured[provider];
    try{
     let result;
@@ -75,9 +76,9 @@ async function handleChatPost({request,env}){
       const response=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{...jsonHeaders,"x-api-key":cfg.key,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:cfg.model,max_tokens:1800,system,messages:history.concat([{role:"user",content:message}])}),signal:AbortSignal.timeout(40000)});
       const raw=await response.text();let data={};try{data=JSON.parse(raw)}catch{}if(!response.ok)throw new Error("HTTP "+response.status+" "+clip(data?.error?.message||raw,220));const answer=getText(data).trim();if(!answer)throw new Error("Anthropic returned an empty response.");result={answer,sources:[]};
     }
-    traceEvent(arguments[0],"ai_provider:"+provider,"success",{model:cfg.model,sources:(result.sources||[]).length});
+    traceEvent(context,"ai_provider:"+provider,"success",{model:cfg.model,sources:(result.sources||[]).length});
     return J({answer:result.answer,sources:result.sources||[],provider,model:cfg.model});
-   }catch(error){traceEvent(arguments[0],"ai_provider:"+provider,"error",{message:clip(error?.message||"request failed",220)});failures.push(provider+": "+clip(error?.message||"request failed",220));}
+   }catch(error){traceEvent(context,"ai_provider:"+provider,"error",{message:clip(error?.message||"request failed",220)});failures.push(provider+": "+clip(error?.message||"request failed",220));}
   }
   return J({error:"All configured AI providers are currently unavailable. "+failures.join(" · ")},503);
  }catch(error){return J({error:"The assistant could not complete your request. Please try again."},500)}
