@@ -1,5 +1,5 @@
 {
-  "version": "1.7.31",
+  "version": "1.7.32",
   "released": "2026-11-23",
-  "releaseName": "Diagnostics timeline status filters and compact event details"
+  "releaseName": "Fix Hong Kong and Macau flight airport resolution"
 }
