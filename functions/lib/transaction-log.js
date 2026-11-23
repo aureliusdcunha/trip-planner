@@ -48,7 +48,11 @@ async function persist(env,record){
  await db.prepare(`INSERT OR REPLACE INTO transaction_logs
  (transaction_id,endpoint,started_at,completed_at,duration_ms,http_status,outcome,log_json)
  VALUES(?,?,?,?,?,?,?,?)`).bind(record.transaction_id,record.endpoint,record.started_at,record.completed_at,record.duration_ms,record.http_status,record.outcome,JSON.stringify(record)).run();
- await db.prepare("DELETE FROM transaction_logs WHERE completed_at < ?").bind(new Date(Date.now()-7*86400000).toISOString()).run();
+ await db.prepare(`CREATE TABLE IF NOT EXISTS diagnostics_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_at TEXT NOT NULL)`).run();
+ const setting=await db.prepare("SELECT setting_value FROM diagnostics_settings WHERE setting_key='retention_days'").first();
+ const parsed=Number.parseInt(setting?.setting_value||"7",10);
+ const retentionDays=Number.isFinite(parsed)?Math.min(365,Math.max(1,parsed)):7;
+ await db.prepare("DELETE FROM transaction_logs WHERE completed_at < ?").bind(new Date(Date.now()-retentionDays*86400000).toISOString()).run();
 }
 export async function withTransactionLog(context,endpoint,handler){
  const {request,env}=context;
