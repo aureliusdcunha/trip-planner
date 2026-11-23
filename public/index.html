@@ -396,21 +396,28 @@ function renderContent(){
     const data=await r.json();
     if(!r.ok){
      if(data.code==='QUOTA_EXCEEDED'||r.status===429){
-      trip.flightFallbackMode=true;trip.liveSelectedFlights={};
-      const fallbackCount=(trip.flight_options||[]).filter(f=>!f.live_fare&&positiveNumber(f.price_estimate)>0).length;
-      trip.liveFlightStatus='SerpApi free search quota reached. Automatically using the original TripPlanner flight research estimates'+(fallbackCount?' ('+fallbackCount+' options available).':'.')+' These are indicative estimates, not live fares.';
+      trip.flightFallbackMode=false;trip.liveSelectedFlights={};trip.liveFlightOptions=[];trip.flight_options=[];
+      if(trip.budget){trip.budget.international_flight_per_person=0;trip.budget.international_flight_adult=0;trip.budget.international_flight_child=0;trip.budget.international_flight_infant=0;}
+      trip.liveFlightStatus='All live flight providers are unavailable or out of quota. No unverified AI flight suggestions are being shown. Retry later or enter a fare manually.';
       liveStatus.textContent=trip.liveFlightStatus;renderContent();return;
      }
      throw new Error(data.error||'Flight price search failed.');
     }
     trip.flightFallbackMode=false;
     trip.liveFlightOptions=data.options||[];trip.liveFlightSearchAt=data.searchedAt;trip.liveFlightSearchNotice=data.notice;trip.liveFlightProvider=data.provider||'SerpApi';trip.liveSelectedFlights={};
+    // Replace AI-generated estimates; only provider-backed results may populate flight cards.
+    trip.flight_options=[];
     const start=trip.flight_options.length;trip.flight_options.push(...trip.liveFlightOptions);
     trip.liveFlightOptions=trip.liveFlightOptions.map((f,i)=>({...f,_tripIndex:start+i}));
     trip.liveFlightStatus='Found '+trip.liveFlightOptions.length+' indicative flight prices via '+(data.provider||'SerpApi')+' · '+(data.searchesUsed||8)+' searches used. '+(data.partial?'Some cabin/direction searches returned no results. ':'')+'Prices may change.';
     liveStatus.textContent=trip.liveFlightStatus;
     renderContent();
-   }catch(error){liveStatus.textContent=error.message||'Could not retrieve flight prices.';trip.liveFlightStatus=liveStatus.textContent}
+   }catch(error){
+    trip.flightFallbackMode=false;trip.liveSelectedFlights={};trip.liveFlightOptions=[];trip.flight_options=[];
+    if(trip.budget){trip.budget.international_flight_per_person=0;trip.budget.international_flight_adult=0;trip.budget.international_flight_child=0;trip.budget.international_flight_infant=0;}
+    liveStatus.textContent=(error.message||'Could not retrieve flight prices.')+' No unverified flight estimates are being displayed.';
+    trip.liveFlightStatus=liveStatus.textContent;renderContent();
+   }
    finally{searchButton.disabled=false}
   };
   panel.append(originField.wrap,destinationField.wrap,departField.wrap,returnField.wrap,searchButton,liveStatus);
