@@ -1,5 +1,5 @@
 {
-  "version": "1.7.28",
+  "version": "1.7.29",
   "released": "2026-11-23",
-  "releaseName": "Remove duplicate fare from provider link"
+  "releaseName": "Google Flights provider links use home currency"
 }
