@@ -260,7 +260,9 @@ function normaliseSavedFlightCurrency(report){
  if(!local||!home||local===home||!(rate>0))return 0;
  let count=0;
  for(const f of options){
-  const source=String(f.provider_currency||f.currency||"").toUpperCase();
+  const rawCurrency=f.provider_currency||f.currency;
+  if(!rawCurrency)continue;
+  const source=String(rawCurrency).toUpperCase();
   if(source!==home)continue;
   for(const key of ["price_estimate","adult_price_per_person","child_price_per_person","infant_price_per_person","provider_total_amount"]){const value=Number(f[key]);if(Number.isFinite(value)&&value>0)f[key]=Number((value/rate).toFixed(2))}
   f.provider_currency_original=home;f.provider_currency=local;f.currency=local;f.currency_conversion_rate=rate;count++;
