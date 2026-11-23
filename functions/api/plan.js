@@ -1,7 +1,6 @@
 import { withTransactionLog, traceEvent } from "../lib/transaction-log.js";
 import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 import { makeTripCacheKey, readTripReportCache, writeTripReportCache } from "../lib/trip-cache.js";
-import { searchFlightsForPlan } from "./flights.js";
 // Cloudflare Pages Function: POST /api/plan
 // Parallel travel-research specialists orchestrated by one streamed request.
 // Each specialist returns a bounded JSON object; route -> research -> day planners.
@@ -14,7 +13,7 @@ const obj=(properties,required=Object.keys(properties))=>({type:"object",propert
 const arr=items=>({type:"array",items});
 const schemas={
  route:obj({overview:str,best_time:str,destination_currency:str,currency_code:str,local_context:str,route_summary:str,areas:arr(obj({name:str,nights:str,why:str}))}),
- flights:obj({getting_there:str,flight_options:arr(obj({segment:str,route:str,airlines:str,cabin_class:str,flight_number:str,departure:str,arrival:str,duration:str,stops:str,flight_legs:arr(obj({from:str,to:str,flight_number:str,departure:str,arrival:str})),price_estimate:num,adult_price_per_person:num,child_price_per_person:num,infant_price_per_person:num,baggage:str,fare_notes:str,booking_advice:str,booking_url:str}))}),
+ flights:obj({getting_there:str,flight_options:arr(obj({segment:str,route:str,airlines:str,cabin_class:str,flight_number:str,departure:str,arrival:str,duration:str,stops:str,flight_legs:arr(obj({from:str,to:str,flight_number:str,departure:str,arrival:str})),price_estimate:num,adult_price_per_person:num,child_price_per_person:num,infant_price_per_person:num,fare_range_min:num,fare_range_max:num,baggage:str,fare_notes:str,booking_advice:str,booking_url:str}))}),
  transport:obj({internal_transport:arr(obj({mode:str,route:str,duration:str,price_estimate:num,pros:str,booking_advice:str,booking_url:str}))}),
  stay:obj({hotel_options:arr(obj({tier:str,name:str,location:str,stars:str,price_per_night:num,room_notes:str,facilities:str,family_fit:str,airport_transfer:str,why:str,booking_url:str}))}),
  attractions:obj({highlights:arr(obj({name:str,area:str,category:str,duration:str,price_estimate:num,child_price_estimate:num,infant_price_estimate:num,family_price_estimate:num,why_visit:str,practical_tip:str,family_fit:str,booking_url:str}))}),
@@ -38,7 +37,7 @@ function normaliseFlightCurrency(options,fromCurrency,toCurrency,rate){
   if(!rawCurrency)continue;
   const declared=String(rawCurrency).toUpperCase();
   if(declared!==from)continue;
-  for(const key of ["price_estimate","adult_price_per_person","child_price_per_person","infant_price_per_person","provider_total_amount"]){
+  for(const key of ["price_estimate","adult_price_per_person","child_price_per_person","infant_price_per_person","fare_range_min","fare_range_max","provider_total_amount"]){
    const value=Number(option[key]);if(Number.isFinite(value)&&value>0)option[key]=Number((value/fx).toFixed(2));
   }
   option.provider_currency_original=from;option.provider_currency=to;option.currency=to;option.currency_conversion_rate=fx;
@@ -134,11 +133,10 @@ function validateAgent(kind,data,ctx){
  if(kind==="route"&&(!Array.isArray(data.areas)||!data.areas.length))return "The route researcher did not identify overnight bases.";
  if(kind==="flights"){
   const options=Array.isArray(data.flight_options)?data.flight_options:[];
-  const hasOutbound=options.some(x=>String(x?.segment||"").trim().toLowerCase()==="outbound");
-  const hasReturn=options.some(x=>String(x?.segment||"").trim().toLowerCase()==="return");
-  const outboundCount=options.filter(x=>String(x?.segment||"").trim().toLowerCase()==="outbound"&&Number(x?.price_estimate)>0).length;
-  const returnCount=options.filter(x=>String(x?.segment||"").trim().toLowerCase()==="return"&&Number(x?.price_estimate)>0).length;
-  if(!hasOutbound||!hasReturn||outboundCount<2||returnCount<2)return "The flight researcher must return at least two distinct comparison-ready genuine outbound options and two genuine return options, with positive one-way fares. Search multiple airlines and route/stop combinations. If a leg truly has fewer than two verifiable options, explain the limitation rather than inventing flights.";
+  const validRange=x=>Number(x?.fare_range_min)>0&&Number(x?.fare_range_max)>=Number(x?.fare_range_min)&&Number(x?.price_estimate)>0;
+  const outbound=options.filter(x=>String(x?.segment||"").trim().toLowerCase()==="outbound"&&validRange(x));
+  const returning=options.filter(x=>String(x?.segment||"").trim().toLowerCase()==="return"&&validRange(x));
+  if(!outbound.length||!returning.length)return "The Gemini flight researcher must return a positive indicative fare range for both outbound and return one-way travel. Do not invent flight numbers, exact schedules or exact fares; return ranges only.";
  }
  if(kind==="stay"){
   if(!Array.isArray(data.hotel_options)||data.hotel_options.length<3)return "The accommodation researcher must return budget, mid-range and splurge hotel options.";
@@ -176,7 +174,7 @@ function promptFor(kind,ctx){
  const searchInstruction=ctx.useSearch?"You have Google Search available. Actively run at least one focused search for this exact assignment and ground recommendations in the returned sources; do not rely only on model memory. Prefer official or reputable primary sources.":"Live Google Search was not enabled. Use established knowledge and label prices, schedules and availability as indicative; do not imply you checked live sources.";
  const common="Destination: "+t.dest+". Dates: "+t.d1+" to "+t.d2+" inclusive. "+party+" "+searchInstruction+" Use accurate real places. Do not invent live availability, exact fares, flight schedules or opening hours. All numeric price fields must be in destination local currency (ISO code). Never embed currency amounts or currency symbols in narrative text fields; put all prices only in numeric price fields so the application can convert and display them consistently in the traveller's home currency with local currency in brackets. If uncertain, say so rather than inventing.";
  if(kind==="route")return "You are the ROUTE ARCHITECT for a travel-planning team. Your only task is choosing sensible overnight bases and the route between them. "+common+" Return "+ctx.maxBases+" or fewer bases. The number of nights must add up to exactly "+ctx.nights+"; for a day trip, return one base with 0 nights. Avoid unnecessary backtracking and group geographically. For each base return its name, nights as e.g. '3 nights', and a short reason. Also return overview, best_time, destination_currency, currency_code, local_context and route_summary. currency_code must be the ISO 4217 three-letter currency code for the destination local currency (for example THB, JPY, EUR). Do not return hotels, activities, meals, flights or budget. Keep concise.";
-  if(kind==="flights")return "You are the FLIGHT COMPARISON RESEARCHER. Your priority is to find the broadest realistic set of affordable flight choices for this exact trip, not to promote premium or famous airlines. Search the exact origin, destination and travel dates: "+t.from+" to "+t.dest+", outbound "+t.d1+", return "+t.d2+". "+common+" REQUIRED SEARCH METHOD: actively search the web for exact-route fares and schedules for these dates. Run separate searches for (1) lowest fares and budget/low-cost carriers, (2) full-service airlines, (3) direct flights and (4) one-stop alternatives. Search using airport/city pairs and route-specific airline combinations; include regional and local carriers, not only global legacy airlines. Compare reputable airline sites and established flight-search sources. Do not infer that an airline operates a route just because it serves either airport. Do not invent carriers, routes, flight numbers, schedules or prices. Include all distinct relevant options you can verify from sources, aiming for at least 4 distinct comparison-ready outbound and 4 return options, covering different airlines and sensible route/stop combinations; continue searching rather than stopping after one result; if fewer can be verified, return the smaller genuine set and explain the search limitation in fare_notes. Never pad the list with invented or duplicate options. Include low-cost carriers wherever they actually operate this route and dates, as well as full-service airlines. Do not automatically rank a premium airline above a cheaper suitable airline. Rank primarily by verified one-way fare, then total journey duration, stops, baggage and family convenience. Traveller preference: cabin class = "+(t.cabin||"Economy preferred for value; compare other classes only if genuinely useful")+". Stops preference = "+(t.stops==="0"?"Non-stop preferred, but show cheaper 1-stop alternatives separately":t.stops==="1"?"1 stop preferred, but show non-stop and 2-stop alternatives where useful":t.stops==="2"?"2 stops allowed, but show cheaper non-stop/1-stop alternatives too":"Compare non-stop, 1-stop and 2-stop options")+". Honour preferences for default ranking without hiding alternatives. When cabin is Any, prioritise Economy for the main comparison; include Premium Economy, Business or First only when genuinely available and clearly separate them. Return separate outbound and return one-way options; alternatives must not be added as another leg. Each option must include segment (Outbound, Return or Alternative), route, airlines, cabin_class, exact stops, flight_number only if verified, departure/arrival airport and local time only if verified, duration, flight_legs as an ordered array of each actual segment with from, to, flight_number, departure and arrival (empty strings when not verified; one item for direct flights and every item for connections), one-way fare per passenger in destination local currency, adult_price_per_person, child_price_per_person and infant_price_per_person. All fare amounts must be in destination ISO currency, not home currency, minor units or party totals. If sources show a fare in another currency, convert it transparently and mention the original currency/source in fare_notes; do not guess exchange rates. Distinguish verified fare from indicative fare in fare_notes and include source/booking_url for each option where available. If the fare is not verifiable, use 0 rather than inventing an exact price; the UI can then show it as price unavailable. Never use an implausibly high round-number fare just to fill a field. Child fares: use published child fares only when verified; otherwise use adult fare as an explicitly labelled planning fallback. Lap-infant fare: use published fare if verified; otherwise 10% of adult fare as provisional planning estimate and state this. Include baggage only when source confirms it; otherwise say verify fare rules. Do not claim seats are available. Do not use average/from prices as individual itinerary fares. Never put a round-trip price in a one-way field. Prefer sensible family itineraries, convenient airport pairings and avoid unnecessary overnight layovers. For multi-city destinations, include relevant open-jaw/internal flight legs separately and explain their route. Include getting_there as a concise arrival/departure strategy. No hotels or day plans. Before returning, check that the options include the cheapest verified suitable carriers found, not merely the most prominent airlines, and that each fare is plausible for its specific route, dates and cabin.";
+  if(kind==="flights")return "You are the GEMINI FLIGHT FARE-RANGE ESTIMATOR for this trip plan. Do NOT call SerpApi, do NOT call any flight API, and do NOT claim to have searched live booking inventory. Use Gemini reasoning and Google Search grounding when available to estimate a realistic current planning range for this route and these dates. Route: "+t.from+" to "+t.dest+". Dates: outbound "+t.d1+", return "+t.d2+". "+party+" Cabin preference: "+(t.cabin||"Economy")+". Stops preference: "+(t.stops||"Any")+". Return exactly one Outbound and one Return option, each representing a broad fare range per adult for a one-way journey in destination local currency (ISO code). Set fare_range_min and fare_range_max to plausible low/high endpoints, and price_estimate plus adult_price_per_person to the midpoint of that range. These are indicative planning estimates, NOT verified live fares. Do not create individual airline cards, flight numbers, precise departure/arrival times, exact durations or claimed availability. Use airlines field as a short label such as 'Indicative airline mix' and route as the city/airport pair only. Set flight_legs to an empty array, stops to 'Varies', cabin_class to the requested cabin, child_price_per_person to the adult midpoint as a clearly labelled planning fallback, and infant_price_per_person to 10% of adult midpoint as a provisional lap-infant estimate. Include fare_notes stating the date/route assumptions, that the range is Gemini-estimated and unverified, and that final fare depends on airline, baggage, stopovers and booking time. Include getting_there with practical route/airport guidance but no fabricated schedules. Never invent exact prices or represent a range midpoint as a live quote. No SerpApi usage for plan generation.";
  if(kind==="transport")return "You are the LOCAL TRANSPORT SPECIALIST. Research only realistic transfer options for this route. "+common+" Route bases: "+ctx.areas.map(a=>a.name+" ("+a.nights+")").join(" → ")+". Return 2-4 useful transfers including mode, route, indicative total or route fare in destination currency, duration and pros. Do not add daily attractions or flights.";
  if(kind==="stay")return "You are the ACCOMMODATION SPECIALIST for "+ctx.area.name+". Research lodging for this base only. "+common+" Suggested stay: "+ctx.area.nights+". Party composition: "+t.pax+" travellers, "+t.adults+" adults, "+t.children+" children and "+t.infants+" infants. Return exactly 3 specific real hotel properties, one in each tier: Budget, Mid-range and Splurge. Do not return generic descriptions in place of property names. For each include tier, name, location/neighbourhood, star category if known, indicative price per night for one family room sized for up to 2 adults + 1 child (infants may share only where property policy allows), in destination local currency; clearly state if this family occupancy requires an extra bed or a second room. Include family room/triple-room notes, facilities (pool, breakfast, shuttle, kids amenities when verified), family_fit, airport_transfer and why it fits this trip. Include booking_url only if a trusted official property or booking page is known. Do not claim rooms are available. Do not research other bases.";
  if(kind==="attractions")return "You are the ATTRACTIONS SPECIALIST for "+ctx.area.name+". Research only real attractions, cultural experiences and activities in or near this base. "+common+" Return 5-8 high-value, distinct experiences suitable for the dates and interests. Each must include area, category, duration, numeric adult price per person, numeric child price per child, numeric infant price per infant, numeric family total for this party where possible using the actual party counts, why visit, practical tip, family_fit and official booking_url only when verified. Use 0 for free activities. State age restrictions and booking lead time when relevant, but do not invent either. No hotels, dining or day-by-day schedule.";
@@ -441,23 +439,19 @@ async function pool(tasks,limit,worker,onFailure){
  await Promise.all(runners);return results;
 }
 async function runLiveFlightResearch(context,trip,emit,searchCurrency=trip.cur){
- traceEvent(context,"flight_research","started",{origin:trip.from,destination:trip.dest,departure:trip.d1,return:trip.d2,provider:"shared flight search engine"});
- emit({type:"agent_search",agent:"Flight researcher",query:"Live Google Flights provider search: "+trip.from+" to "+trip.dest+" outbound "+trip.d1+" and return "+trip.d2});
- const result=await searchFlightsForPlan(context,{
-  origin:trip.from,destination:trip.dest,departureDate:trip.d1,returnDate:trip.d2,
-  currency:searchCurrency||trip.cur,adults:trip.adults,children:trip.children,infants:trip.infants,
-  cabin:trip.cabin||"Any",stops:trip.stops||"Any"
- });
+ traceEvent(context,"flight_research","started",{origin:trip.from,destination:trip.dest,departure:trip.d1,return:trip.d2,provider:"Gemini fare-range estimate"});
+ emit({type:"agent_search",agent:"Flight researcher",query:"Gemini indicative flight fare-range estimate: "+trip.from+" to "+trip.dest+" outbound "+trip.d1+" and return "+trip.d2});
+ const result=await runAgent("flights",{trip,useSearch:true,label:"Gemini flight fare-range researcher"},context.env,emit,context.retryBudget,context.modelState,context.requestBudget,context.requestGate);
  const options=Array.isArray(result.options)?result.options:[];
  traceEvent(context,"flight_cache",result.cacheHit?"hit":"provider_result",{provider:result.provider||"Flight provider",searched_at:result.searchedAt||null,expires_at:result.cacheExpiresAt||null,options:options.length});
  const outbound=options.filter(x=>String(x.segment||"").toLowerCase()==="outbound");
  const returning=options.filter(x=>String(x.segment||"").toLowerCase()==="return");
  if(!outbound.length||!returning.length)throw new Error("Live flight providers did not return usable options for both outbound and return legs.");
  const sources=sourceUnique(options.filter(x=>x.source_url).map(x=>({title:x.price_source||result.provider||"Google Flights",url:x.source_url})));
- const queryCount=Math.max(1,Number(result.searchesUsed)||8);
- const queries=Array.from({length:queryCount},(_,i)=>"Provider search "+(i+1)+": "+trip.from+" to "+trip.dest+" "+trip.d1+"/"+trip.d2);
- traceEvent(context,"flight_research","success",{provider:result.provider||"SerpApi",options:options.length,outbound:outbound.length,return:returning.length,source_count:sources.length,search_count:queryCount});
- return {data:{flight_options:options,getting_there:(result.cacheHit?"Saved provider-backed Google Flights results (48-hour cache) via ":"Live provider-backed Google Flights results via ")+(result.provider||"SerpApi")},sources,queries,model:result.provider||"SerpApi",status:"completed",cacheHit:!!result.cacheHit,searchedAt:result.searchedAt||null,cacheExpiresAt:result.cacheExpiresAt||null};
+ const queryCount=Math.max(0,Number(result.queries?.length)||0);
+ const queries=result.queries||[];
+ traceEvent(context,"flight_research","success",{provider:"Gemini",options:options.length,outbound:outbound.length,return:returning.length,source_count:sources.length,search_count:queryCount});
+ return {data:{flight_options:options,getting_there:(result.cacheHit?"Saved provider-backed Google Flights results (48-hour cache) via ":"Live provider-backed Google Flights results via ")+("Gemini")},sources,queries,model:result.provider||"SerpApi",status:"completed",cacheHit:!!result.cacheHit,searchedAt:result.searchedAt||null,cacheExpiresAt:result.cacheExpiresAt||null};
 }
 function makeBaseSchedule(areas,dayCount){
  const schedule=[];
@@ -557,48 +551,9 @@ async function handlePlanPost(context){
        combined.research=combined.research||{};
        combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
        combined.research_unavailable=Array.isArray(combined.research_unavailable)?combined.research_unavailable:[];
-       emit({type:"agent_started",agent:"Live flight-price refresh",completed:0,total:1});
-       let flightRefresh={ok:false,error:"Live flight refresh did not complete."};
-       traceEvent(context,"cache_flight_refresh","started",{origin:trip.from,destination:trip.dest,departure:trip.d1,return:trip.d2,provider:"SerpApi with configured fallbacks"});
-       try{
-        const localFlightCurrency=String(combined.currency_code||combined.budget?.currency||trip.cur).toUpperCase();
-        const refreshed=await runLiveFlightResearch(context,trip,emit,localFlightCurrency);
-        combined.flight_options=refreshed.data.flight_options;
-        combined.getting_there=refreshed.data.getting_there;
-        combined.liveFlightSearchAt=refreshed.searchedAt||new Date().toISOString();
-         combined.liveFlightCacheHit=!!refreshed.cacheHit;
-         combined.liveFlightCacheExpiresAt=refreshed.cacheExpiresAt||null;
-        combined.liveFlightProvider=refreshed.model;
-        combined.liveFlightSearchKey=[trip.from,trip.dest,trip.d1,trip.d2,trip.cur].join("|");
-        combined.research.flight_search_status="completed";
-        combined.research.flight_provider=refreshed.model;
-        combined.research.flight_refreshed_at=combined.liveFlightSearchAt;
-         combined.research.flight_cache_hit=!!refreshed.cacheHit;
-         combined.research.flight_cache_expires_at=refreshed.cacheExpiresAt||null;
-        combined.research.flight_option_count=combined.flight_options.length;
-        combined.research.flight_source_count=refreshed.sources.length;
-        combined.research.flight_search_queries=refreshed.queries.length;
-        combined.research_sources=sourceUnique([...(combined.research_sources||[]),...refreshed.sources.map(x=>({...x,agent:"Live flight-price refresh"}))]);
-        combined.research_unavailable=combined.research_unavailable.filter(x=>x.kind!=="flights");
-        combined.caveats=combined.caveats.filter(x=>!/contains no saved verified live flight results|no new search was started/i.test(String(x)));
-        flightRefresh={ok:true,options:combined.flight_options.length,provider:refreshed.model};
-        traceEvent(context,"cache_flight_refresh",refreshed.cacheHit?"cache_hit":"success",{provider:refreshed.model,options:combined.flight_options.length,sources:refreshed.sources.length,searches:refreshed.queries.length,cache_expires_at:refreshed.cacheExpiresAt||null});
-        emit({type:"agent_completed",agent:"Live flight-price refresh",completed:1,total:1,sourceCount:refreshed.sources.length,searchCount:refreshed.queries.length});
-       }catch(error){
-        const message=error?.message||String(error);
-        combined.flight_options=(Array.isArray(combined.flight_options)?combined.flight_options:[]).filter(f=>f?.live_fare===true&&f?.price_unverified!==true);
-        combined.research.flight_search_status="failed";
-        combined.research.flight_failure_reason=message;
-        combined.research.flight_refreshed_at=new Date().toISOString();
-        combined.research_unavailable=combined.research_unavailable.filter(x=>x.kind!=="flights");
-        combined.research_unavailable.push({kind:"flights",label:"Live flight-price refresh",error:message});
-        combined.caveats=combined.caveats.filter(x=>!/flight.*refresh|verified live flight/i.test(String(x)));
-        combined.caveats.push("Live flight-price refresh failed: "+message+". Previously saved itinerary details are retained; flight prices are not represented as current.");
-        flightRefresh={ok:false,error:message};
-        traceEvent(context,"cache_flight_refresh","error",{message,stack:error?.stack||"",preserved_cached_options:Array.isArray(combined.flight_options)?combined.flight_options.length:0});
-        emit({type:"agent_failed",agent:"Live flight-price refresh",error:message});
-       }
-       combined.cache={hit:true,saved:true,createdAt:cachedTrip.createdAt,flightsRefreshed:flightRefresh.ok,flightRefresh};
+       const flightRefresh={ok:true,cached:true,provider:"Gemini estimate",options:Array.isArray(combined.flight_options)?combined.flight_options.length:0};
+       traceEvent(context,"cache_flight_refresh","skipped",{reason:"cached Gemini fare ranges are reused; plan generation never calls SerpApi"});
+       combined.cache={hit:true,saved:true,createdAt:cachedTrip.createdAt,flightsRefreshed:false,flightRefresh};
        try{const saved=await writeTripReportCache(env,cacheKey,cacheInput,combined);combined.cache.saved=saved;}catch(saveError){combined.cache.saved=false;traceEvent(context,"cache_flight_refresh_persist","warning",{message:saveError?.message||String(saveError)});}
        emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt,flightsRefreshed:flightRefresh.ok});
        return;
@@ -615,7 +570,7 @@ async function handlePlanPost(context){
       const openingRuns=await pool(openingTasks,3,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed:openingCompleted,total:openingTasks.length});
        const ctx={trip,useSearch:task.kind==="flights"?true:useSearch,maxBases,nights:dayCount-1,label:task.label};
-       const result=task.kind==="flights"?await runLiveFlightResearch(context,trip,emit):await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
+       const result=await runAgent(task.kind,{...ctx,useSearch:task.kind==="flights"?true:ctx.useSearch},env,emit,retryBudget,modelState,requestBudget,requestGate);
        openingCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:openingCompleted,total:openingTasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
