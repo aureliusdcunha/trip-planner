@@ -511,7 +511,7 @@ async function handlePlanPost(context){
        combined.flight_options=[];
        combined.getting_there="";
        let freshFlight=null,flightFailure=null;
-       try{freshFlight=await runAgent("flights",{trip,useSearch,maxBases,nights:dayCount-1,label:"Flight researcher",maxDurationMs:150000},env,emit,retryBudget,modelState,requestBudget,requestGate)}
+       try{freshFlight=await runAgent("flights",{trip,useSearch:true,maxBases,nights:dayCount-1,label:"Flight researcher",maxDurationMs:150000},env,emit,retryBudget,modelState,requestBudget,requestGate)}
        catch(error){flightFailure=error;combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];emit({type:"agent_failed",agent:"Flight researcher",error:error.message||"Live flight research unavailable"});}
        const flightResearch=freshFlight?.data||{};
        if(freshFlight){combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];combined.getting_there=flightResearch.getting_there||"";combined.research_unavailable=(combined.research_unavailable||[]).filter(x=>x.kind!=="flights");}
@@ -581,7 +581,7 @@ async function handlePlanPost(context){
       emit({type:"stage",stage:"opening",message:"Launching route, flight and budget specialists in parallel…",agentTotal:openingTasks.length});
       const openingRuns=await pool(openingTasks,3,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed:openingCompleted,total:openingTasks.length});
-       const ctx={trip,useSearch,maxBases,nights:dayCount-1,label:task.label};
+       const ctx={trip,useSearch:task.kind==="flights"?true:useSearch,maxBases,nights:dayCount-1,label:task.label};
        const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
        openingCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:openingCompleted,total:openingTasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
