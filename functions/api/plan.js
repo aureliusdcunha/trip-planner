@@ -438,21 +438,6 @@ async function pool(tasks,limit,worker,onFailure){
  });
  await Promise.all(runners);return results;
 }
-async function runLiveFlightResearch(context,trip,emit,searchCurrency=trip.cur){
- traceEvent(context,"flight_research","started",{origin:trip.from,destination:trip.dest,departure:trip.d1,return:trip.d2,provider:"Gemini fare-range estimate"});
- emit({type:"agent_search",agent:"Flight researcher",query:"Gemini indicative flight fare-range estimate: "+trip.from+" to "+trip.dest+" outbound "+trip.d1+" and return "+trip.d2});
- const result=await runAgent("flights",{trip,useSearch:true,label:"Gemini flight fare-range researcher"},context.env,emit,context.retryBudget,context.modelState,context.requestBudget,context.requestGate);
- const options=Array.isArray(result.options)?result.options:[];
- traceEvent(context,"flight_cache",result.cacheHit?"hit":"provider_result",{provider:result.provider||"Flight provider",searched_at:result.searchedAt||null,expires_at:result.cacheExpiresAt||null,options:options.length});
- const outbound=options.filter(x=>String(x.segment||"").toLowerCase()==="outbound");
- const returning=options.filter(x=>String(x.segment||"").toLowerCase()==="return");
- if(!outbound.length||!returning.length)throw new Error("Live flight providers did not return usable options for both outbound and return legs.");
- const sources=sourceUnique(options.filter(x=>x.source_url).map(x=>({title:x.price_source||result.provider||"Google Flights",url:x.source_url})));
- const queryCount=Math.max(0,Number(result.queries?.length)||0);
- const queries=result.queries||[];
- traceEvent(context,"flight_research","success",{provider:"Gemini",options:options.length,outbound:outbound.length,return:returning.length,source_count:sources.length,search_count:queryCount});
- return {data:{flight_options:options,getting_there:(result.cacheHit?"Saved provider-backed Google Flights results (48-hour cache) via ":"Live provider-backed Google Flights results via ")+("Gemini")},sources,queries,model:result.provider||"SerpApi",status:"completed",cacheHit:!!result.cacheHit,searchedAt:result.searchedAt||null,cacheExpiresAt:result.cacheExpiresAt||null};
-}
 function makeBaseSchedule(areas,dayCount){
  const schedule=[];
  for(const area of areas){for(let i=0;i<nightsOf(area.nights)&&schedule.length<dayCount-1;i++)schedule.push(area.name)}
