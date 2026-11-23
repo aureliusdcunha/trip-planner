@@ -457,7 +457,7 @@ async function handlePlanPost(context){
   let cancelled=false,heartbeatTimer=null,deadlineTimer=null;
   const stream=new ReadableStream({
    start(controller){
-    const emit=value=>{if(cancelled)return;try{controller.enqueue(heartbeat.encode("data: "+JSON.stringify(value)+"\n\n"))}catch{cancelled=true}};
+    const emit=value=>{if(cancelled)return;try{if(value&&typeof value==="object"&&value.type!=="heartbeat"){const stage=value.stage||value.agent||value.type||"stream_event";const status=value.type==="error"?"error":value.type==="agent_retry"||value.type==="model_fallback"?"warning":"info";traceEvent(context,"plan:"+String(stage),status,{type:value.type,message:value.message||value.error,agent:value.agent,from:value.from,to:value.to,freeTier:value.freeTier});}controller.enqueue(heartbeat.encode("data: "+JSON.stringify(value)+"\n\n"))}catch(error){traceEvent(context,"stream_emit","error",{message:error?.message});cancelled=true}};
     emit({type:"progress",stage:"route",message:"Route architect is selecting the best bases and route…",searchEnabled:useSearch});
     heartbeatTimer=setInterval(()=>emit({type:"heartbeat",message:"Travel research is still running; your connection is active."}),10000);
     // An HTTP-triggered Worker has no hard wall-time cap while the client stays connected.
