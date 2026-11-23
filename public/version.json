@@ -1,5 +1,5 @@
 {
-  "version": "1.7.36",
+  "version": "1.7.37",
   "released": "2026-11-23",
-  "releaseName": "Use Gemini fare ranges for plan flights; SerpApi only for manual flight search"
+  "releaseName": "Add AI fallback for Gemini capacity failures and accurate streamed error diagnostics"
 }
