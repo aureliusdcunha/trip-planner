@@ -14,18 +14,6 @@ const TABLE = `CREATE TABLE IF NOT EXISTS transaction_logs (
  outcome TEXT NOT NULL,
  log_json TEXT NOT NULL
 )`;
-const SETTINGS_TABLE = `CREATE TABLE IF NOT EXISTS diagnostics_settings (
- setting_key TEXT PRIMARY KEY,
- setting_value TEXT NOT NULL,
- updated_at TEXT NOT NULL
-)`;
-async function getRetentionDays(db) {
- await db.prepare(SETTINGS_TABLE).run();
- const row=await db.prepare("SELECT setting_value FROM diagnostics_settings WHERE setting_key='retention_days'").first();
- const days=Number.parseInt(row?.setting_value||"7",10);
- return Number.isFinite(days)?Math.min(365,Math.max(1,days)):7;
-}
-
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
@@ -50,7 +38,6 @@ export async function onRequestGet({ request, env }) {
 
   try {
     await db.prepare(TABLE).run();
-    const retentionDays=await getRetentionDays(db);
     const url = new URL(request.url);
     const id = (url.searchParams.get("id") || "").trim();
 
@@ -59,7 +46,7 @@ export async function onRequestGet({ request, env }) {
       if (!row) return json({ error: "Transaction not found. It may have expired after seven days." }, 404);
       let log;
       try { log = JSON.parse(row.log_json); } catch { log = row.log_json; }
-      return json({ log, retention_days: retentionDays });
+      return json({ log });
     }
 
     const idsParam = (url.searchParams.get("ids") || "").trim();
@@ -111,7 +98,6 @@ export async function onRequestGet({ request, env }) {
       total: Number(countRow?.total || 0),
       limit,
       offset,
-      retention_days: retentionDays
     });
   } catch (error) {
     console.error("Diagnostics query failed:", error?.stack || error);
@@ -127,27 +113,21 @@ export async function onRequestPost({ request, env }) {
  if(!sameSecret(supplied,configured))return json({error:"Invalid diagnostics access token."},401);
  const db=env?.QUOTA_DB;if(!db)return json({error:"The QUOTA_DB database binding is unavailable."},503);
  try{
-  await db.prepare(TABLE).run();await db.prepare(SETTINGS_TABLE).run();
+  await db.prepare(TABLE).run();
   const body=await request.json();
-  if(body.action!=="update_retention")return json({error:"Unsupported diagnostics settings action."},400);
+  if(body.action!=="apply_retention")return json({error:"Unsupported diagnostics action."},400);
   const days=Number(body.retention_days);
   if(!Number.isInteger(days)||days<1||days>365)return json({error:"Retention must be between 1 and 365 days."},400);
-  const now=new Date().toISOString();
-  await db.prepare("INSERT INTO diagnostics_settings(setting_key,setting_value,updated_at) VALUES('retention_days',?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at").bind(String(days),now).run();
-  let deleted=0;
+  let cutoff;
   if(body.delete_before){
-   const cutoff=new Date(body.delete_before+"T23:59:59.999Z");
-   if(!/^\d{4}-\d{2}-\d{2}$/.test(body.delete_before)||Number.isNaN(cutoff.getTime()))return json({error:"Enter a valid delete-before date."},400);
-   const result=await db.prepare("DELETE FROM transaction_logs WHERE completed_at < ?").bind(cutoff.toISOString()).run();
-   deleted=Number(result.meta?.changes||0);
-  }else{
-   const cutoff=new Date(Date.now()-days*86400000).toISOString();
-   const result=await db.prepare("DELETE FROM transaction_logs WHERE completed_at < ?").bind(cutoff).run();
-   deleted=Number(result.meta?.changes||0);
-  }
-  return json({success:true,retention_days:days,deleted,updated_at:now});
+   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(body.delete_before))return json({error:"Enter a valid delete-before date."},400);
+   cutoff=new Date(body.delete_before+"T23:59:59.999Z");
+   if(Number.isNaN(cutoff.getTime()))return json({error:"Enter a valid delete-before date."},400);
+  }else cutoff=new Date(Date.now()-days*86400000);
+  const result=await db.prepare("DELETE FROM transaction_logs WHERE completed_at < ?").bind(cutoff.toISOString()).run();
+  return json({success:true,retention_days:days,deleted:Number(result.meta?.changes||0),cutoff:cutoff.toISOString()});
  }catch(error){
-  console.error("Diagnostics settings update failed:",error?.stack||error);
-  return json({error:"Unable to update diagnostics settings.",detail:String(error?.message||error)},500);
+  console.error("Diagnostics retention cleanup failed:",error?.stack||error);
+  return json({error:"Unable to apply diagnostics retention.",detail:String(error?.message||error)},500);
  }
 }
