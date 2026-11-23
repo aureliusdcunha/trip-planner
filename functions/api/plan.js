@@ -249,35 +249,44 @@ async function rankFlightOptionsWithWorkersAI(options,env){
   return {options:[...ranked,...candidates.filter((_,i)=>!used.has(i)),...options.slice(40)],used:true};
  }catch(error){console.warn("Workers AI flight ranking unavailable; retaining source order:",error?.message||error);return {options,used:false}}
 }
+function extractFallbackJson(raw){
+ const text=extractJsonText(raw).trim().replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim();
+ if(!text)return null;try{return JSON.parse(text)}catch{}
+ const first=text.indexOf("{"),last=text.lastIndexOf("}");if(first>=0&&last>first){try{return JSON.parse(text.slice(first,last+1))}catch{}}
+ return null;
+}
 async function runOpenAICompatibleFallback(provider,kind,ctx,env,label){
  const key=provider==="Groq"?env.GROQ_API_KEY:env.OPENROUTER_API_KEY;if(!key)return null;
- const model=provider==="Groq"?"openai/gpt-oss-120b":"openrouter/free";
- const base=provider==="Groq"?"https://api.groq.com/openai/v1/chat/completions":"https://openrouter.ai/api/v1/chat/completions";
- const schema=schemas[kind];if(!schema)return null;
+ const model=provider==="Groq"?"openai/gpt-oss-120b":"openrouter/free",base=provider==="Groq"?"https://api.groq.com/openai/v1/chat/completions":"https://openrouter.ai/api/v1/chat/completions",schema=schemas[kind];if(!schema)return null;
  const task=promptFor(kind,{...ctx,useSearch:false}).replace("GEMINI FLIGHT FARE-RANGE ESTIMATOR","AI FLIGHT FARE-RANGE ESTIMATOR").replace("Gemini reasoning","model reasoning");
- const messages=[{role:"system",content:"Return only valid JSON matching the requested schema. Never fabricate live availability, flight numbers, exact schedules, current fares or citations. Clearly label estimates and uncertainty. Use destination local currency."},{role:"user",content:"Assignment: "+task+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}];
- let response;try{response=await fetch(base,{method:"POST",headers:{"authorization":"Bearer "+key,"content-type":"application/json"},body:JSON.stringify({model,messages,temperature:0.2,max_tokens:2400,response_format:{type:"json_object"}}),signal:AbortSignal.timeout(55000)})}catch(e){throw new Error(provider+" connection failed: "+String(e.message||e))}
- if(!response.ok)throw new Error(provider+" returned HTTP "+response.status+". "+(await response.text().catch(function(){return ""})).slice(0,500));
- const payload=await response.json();const raw=payload.choices&&payload.choices[0]&&payload.choices[0].message&&payload.choices[0].message.content;
- const cleaned=String(raw||"").replace(/^\\s*```(?:json)?/i,"").replace(/```\\s*$/,"").trim();if(!cleaned)throw new Error(provider+" returned an empty response.");
- let data;try{data=JSON.parse(cleaned)}catch(e){throw new Error(provider+" returned invalid JSON.")}
+ const messages=[{role:"system",content:"Return only one compact valid JSON object matching the requested schema. No markdown or commentary. Never fabricate live availability, exact schedules, fares or citations. Label uncertainty. Use destination local currency."},{role:"user",content:"Assignment: "+task+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}];
+ const maxTokens=({route:1000,flights:1400,transport:1200,stay:1500,attractions:2200,dining:1800,guide:2600,day:3000}[kind]||1600);
+ let response;try{response=await fetch(base,{method:"POST",headers:{"authorization":"Bearer "+key,"content-type":"application/json"},body:JSON.stringify({model,messages,temperature:0.1,max_tokens:maxTokens,response_format:{type:"json_object"}}),signal:AbortSignal.timeout(55000)})}catch(e){throw new Error(provider+" connection failed: "+String(e.message||e))}
+ if(!response.ok){const details=(await response.text().catch(function(){return ""})).slice(0,500),retryAfter=response.headers.get("retry-after");throw new Error(provider+" returned HTTP "+response.status+(retryAfter?" (Retry-After "+retryAfter+"s)":"")+". "+details)}
+ let payload;try{payload=await response.json()}catch{throw new Error(provider+" returned a non-JSON HTTP response.")}
+ const raw=payload.choices?.[0]?.message?.content??payload.output_text??payload.response??payload.result;const data=extractFallbackJson(raw);
+ if(!data)throw new Error(provider+" returned empty or malformed JSON (finish reason: "+String(payload.choices?.[0]?.finish_reason||"unknown")+")");
  const issue=validateAgent(kind,data,{...ctx,useSearch:false});if(issue)throw new Error(provider+" response failed validation: "+issue);
- return {data:data,sources:[],queries:[],model:provider+" · "+model,status:"completed",fallback:true,grounding:false,provider:provider};
+ return {data,sources:[],queries:[],model:provider+" · "+model,status:"completed",fallback:true,grounding:false,provider};
 }
-async function runExternalAIAgentFallback(kind,ctx,env,label){
- const failures=[];for(const provider of ["Groq","OpenRouter"]){try{const result=await runOpenAICompatibleFallback(provider,kind,ctx,env,label);if(result)return result}catch(error){failures.push(String(error.message||error))}}
- try{const result=await runWorkersAIAgentFallback(kind,ctx,env,label);if(result)return result}catch(error){failures.push(String(error.message||error))}
- throw new Error(label+": Groq, OpenRouter and Workers AI fallbacks unavailable. "+failures.join(" | "));
+async function runExternalAIAgentFallback(kind,ctx,env,label,modelState){
+ const failures=[],gate=modelState?.fallbackGate;let release=null;
+ if(gate){const previous=gate.tail;gate.tail=new Promise(resolve=>release=resolve);await previous;const delay=Math.max(0,gate.nextAt-Date.now());if(delay)await new Promise(resolve=>setTimeout(resolve,delay));gate.nextAt=Date.now()+4500}
+ try{
+  for(const provider of ["Groq","OpenRouter"]){try{const result=await runOpenAICompatibleFallback(provider,kind,ctx,env,label);if(result)return result}catch(error){failures.push(String(error.message||error))}}
+  try{const result=await runWorkersAIAgentFallback(kind,ctx,env,label);if(result)return result}catch(error){failures.push(String(error.message||error))}
+ }finally{if(release)release()}
+ throw new Error(label+": all fallback providers unavailable. "+failures.join(" | "));
 }
 async function runWorkersAIAgentFallback(kind,ctx,env,label){
  const schema=schemas[kind];if(!schema)return null;
- const messages=[{role:"system",content:"Return only valid JSON matching the supplied schema. Never fabricate live availability, flight numbers, exact schedules, current fares or citations. Clearly label uncertainty. Use destination local currency."},{role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false}).replace("GEMINI FLIGHT FARE-RANGE ESTIMATOR","AI FLIGHT FARE-RANGE ESTIMATOR").replace("Gemini reasoning","model reasoning")+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}];
- const limit=kind==="guide"?2400:(kind==="attractions"||kind==="day"?2800:1800);const guarded=await runWorkersAIWithQuota(env,"@cf/zai-org/glm-4.7-flash",messages,{messages,max_completion_tokens:limit,chat_template_kwargs:{enable_thinking:false}},limit);
+ const messages=[{role:"system",content:"Return only valid JSON matching the supplied schema. Never fabricate live availability, exact schedules, fares or citations. Label uncertainty. Use destination local currency."},{role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false}).replace("GEMINI FLIGHT FARE-RANGE ESTIMATOR","AI FLIGHT FARE-RANGE ESTIMATOR").replace("Gemini reasoning","model reasoning")+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}];
+ const limit=kind==="guide"?3000:(kind==="attractions"||kind==="day"?3600:2200),guarded=await runWorkersAIWithQuota(env,"@cf/zai-org/glm-4.7-flash",messages,{messages,max_completion_tokens:limit,chat_template_kwargs:{enable_thinking:false}},limit);
  if(!guarded.allowed)throw new Error(label+": Workers AI fallback unavailable ("+String(guarded.reason||"quota or binding unavailable")+")");
- const result=guarded.result;const raw=result.response||result.result||(result.choices&&result.choices[0]&&result.choices[0].message&&result.choices[0].message.content)||result.output_text;
- const cleaned=String(raw||"").replace(/^\\s*```(?:json)?/i,"").replace(/```\\s*$/,"").trim();let data;try{data=JSON.parse(cleaned)}catch(e){throw new Error(label+": Workers AI returned invalid JSON.")}
+ const result=guarded.result,raw=result?.response??result?.result??result?.choices?.[0]?.message?.content??result?.output_text??result?.output??result?.content??result;const data=extractFallbackJson(raw);
+ if(!data)throw new Error(label+": Workers AI returned empty or malformed JSON (response keys: "+(result&&typeof result==="object"?Object.keys(result).join(","):"none")+")");
  const issue=validateAgent(kind,data,{...ctx,useSearch:false});if(issue)throw new Error(label+": Workers AI response failed validation: "+issue);
- return {data:data,sources:[],queries:[],model:"Workers AI · GLM-4.7-Flash fallback",status:"completed",fallback:true,grounding:false,quota:guarded.quota};
+ return {data,sources:[],queries:[],model:"Workers AI · GLM-4.7-Flash fallback",status:"completed",fallback:true,grounding:false,quota:guarded.quota};
 }
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
@@ -288,10 +297,10 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
  let lastModel="",capacityRetriesForModel=0;
  for(let attempt=0;attempt<20;attempt++){
   while(agentModelState.index<agentModelState.models.length&&agentModelState.health?.disabled?.has(agentModelState.models[agentModelState.index]))agentModelState.index++;
-  if(agentModelState.index>=agentModelState.models.length){const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models have been temporarily paused after rate-limit or overload responses from other researchers.");}
-  if(Date.now()>=agentDeadline){const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
+  if(agentModelState.index>=agentModelState.models.length){const fallback=await runExternalAIAgentFallback(kind,ctx,env,label,modelState);if(fallback)return fallback;throw new Error(label+": all configured Gemini models have been temporarily paused after rate-limit or overload responses from other researchers.");}
+  if(Date.now()>=agentDeadline){const fallback=await runExternalAIAgentFallback(kind,ctx,env,label,modelState);if(fallback)return fallback;throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
   await acquireRequestSlot(requestGate);
-  if(Date.now()>=agentDeadline){releaseRequestSlot(requestGate);const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
+  if(Date.now()>=agentDeadline){releaseRequestSlot(requestGate);const fallback=await runExternalAIAgentFallback(kind,ctx,env,label,modelState);if(fallback)return fallback;throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
   const model=agentModelState.models[agentModelState.index];
   if(model!==lastModel){lastModel=model;capacityRetriesForModel=0}
   const modelIsFallback=agentModelState.index>0;
@@ -323,10 +332,10 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
      send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"The current AI model took too long to respond. Switching to "+next+" so this research can continue."});
      continue;
     }
-    const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured AI models timed out and external fallbacks failed.");
+    const fallback=await runExternalAIAgentFallback(kind,ctx,env,label,modelState);if(fallback)return fallback;throw new Error(label+": all configured AI models timed out and external fallbacks failed.");
    }
    if(attempt<11&&retryBudget.remaining>0){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
-   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": Could not connect to Gemini or fallback providers.");
+   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label,modelState);if(fallback)return fallback;throw new Error(label+": Could not connect to Gemini or fallback providers.");
   }
   if(response.status===429){
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
@@ -336,7 +345,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    // A rate-limited model is skipped immediately; do not stall every researcher on its cooldown.
    const next=advanceModel(agentModelState,model);
    if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Gemini rate-limited "+model+". Skipping it and switching to "+next+"."});continue}
-   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details);
+   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label,modelState);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are rate-limited (HTTP 429). "+details);
   }
   if(!response.ok){
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
@@ -408,7 +417,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
     if(next){agentModelState.switched=true;agentModelState.switched=true;send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"Model "+model+" reported high demand. Switching immediately to "+next+"."});continue}
     const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models are currently experiencing high demand. Please retry later. "+streamError);
    }
-   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": "+streamError);
+   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label,modelState);if(fallback)return fallback;throw new Error(label+": "+streamError);
   }
   let data=null,validationIssue="No structured JSON was returned.";
   if(output.trim()){
@@ -532,6 +541,7 @@ async function handlePlanPost(context){
       const retryBudget={remaining:18};
       const requestBudget={remaining:90};
       const requestGate=createRequestGate(2,4000);
+      modelState.fallbackGate={tail:Promise.resolve(),nextAt:0};
       if(b.retryOnly&&cachedTrip?.report){
        const request=b.retryOnly,kind=String(request.kind||""),areaName=clip(request.area,100),date=clip(request.date,10);
        const allowed=["flights","stay","attractions","dining","transport","day"];
