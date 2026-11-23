@@ -254,13 +254,13 @@ async function runWorkersAIAgentFallback(kind,ctx,env,label){
  if(!schema)return null;
  const messages=[
   {role:"system",content:"You are a careful travel research assistant. Return only valid JSON matching the supplied JSON schema. Never fabricate live availability, flight numbers, exact schedules, current fares or citations. Use sensible indicative planning estimates where appropriate and clearly label uncertainty in the provided fields. All numeric costs must be in destination local currency."},
-  {role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false})+"\\n\\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}
+  {role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false})+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}
  ];
  const guarded=await runWorkersAIWithQuota(env,"@cf/zai-org/glm-4.7-flash",messages,{messages,max_completion_tokens:kind==="guide"?2400:kind==="attractions"||kind==="day"?2800:1800,chat_template_kwargs:{enable_thinking:false}},kind==="guide"?2400:kind==="attractions"||kind==="day"?2800:1800);
  if(!guarded.allowed)throw new Error(label+": Gemini models are unavailable and Workers AI fallback is unavailable ("+String(guarded.reason||"quota or binding unavailable")+").");
  const result=guarded.result;
  const raw=typeof result?.response==="string"?result.response:typeof result?.result==="string"?result.result:Array.isArray(result?.choices)?result.choices[0]?.message?.content:result?.output_text;
- const cleaned=String(raw||"").replace(/^\\s*```(?:json)?/i,"").replace(/```\\s*$/,"").trim();
+ const cleaned=String(raw||"").replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim();
  if(!cleaned)throw new Error(label+": Workers AI fallback returned an empty response.");
  let data;try{data=JSON.parse(cleaned)}catch{throw new Error(label+": Workers AI fallback returned invalid JSON.");}
  const issue=validateAgent(kind,data,{...ctx,useSearch:false});
