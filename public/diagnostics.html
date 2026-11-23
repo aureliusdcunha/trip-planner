@@ -99,6 +99,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
   const $ = id => document.getElementById(id);
   const state = { token: sessionStorage.getItem("tp_diag_token") || "", offset: 0, limit: 50, total: 0, currentLog: null, selectedLogs: new Map(), visibleRows: [], retentionDays: Number(localStorage.getItem("tp_diag_retention_days")||7) };
   const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+  const formatDuration = value => { const ms=Math.max(0,Number(value)||0); return ms>=1000?(ms/1000).toFixed(2)+' s':Math.round(ms)+' ms'; };
   const dateText = value => { if(!value) return "—"; const d=new Date(value); return Number.isNaN(d.getTime())?value:d.toLocaleString(); };
   const showError = (el,msg) => { el.textContent=msg; el.classList.remove("hidden"); };
   const hideError = el => el.classList.add("hidden");
@@ -195,7 +196,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       const log=data.log||{};
       $("detailId").textContent=log.transaction_id||id;
       $("detailMeta").innerHTML=[
-        ["Endpoint",log.endpoint],["HTTP status",log.http_status],["Outcome",log.outcome],["Duration",log.duration_ms+" ms"],
+        ["Endpoint",log.endpoint],["HTTP status",log.http_status],["Outcome",log.outcome],["Duration",formatDuration(log.duration_ms)],["Duration (seconds)",Number(log.duration_seconds??(Number(log.duration_ms||0)/1000)).toFixed(2)+" s"],["Timing details",log.timing?JSON.stringify(log.timing):"Not available"],
         ["Started",dateText(log.started_at)],["Completed",dateText(log.completed_at)]
       ].map(([k,v])=>'<div class="detail-item"><small>'+esc(k)+'</small><b>'+esc(v??"—")+'</b></div>').join("");
       const events=Array.isArray(log.trace_events)?log.trace_events:[];
