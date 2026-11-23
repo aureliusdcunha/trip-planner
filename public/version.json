@@ -1,5 +1,5 @@
 {
-  "version": "1.7.24",
+  "version": "1.7.25",
   "released": "2026-11-23",
-  "releaseName": "Live flight refresh on cached plans and flight card rendering fix"
+  "releaseName": "Four-column flight cards and default collapsed outbound and return sections"
 }
