@@ -90,6 +90,8 @@ export async function onRequestGet({ request, env }) {
     }
     const policyRow = await db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = ?").bind("flight_cache_hours").first();
     const flightCacheHours = Math.min(720, Math.max(1, Number(policyRow?.setting_value) || 48));
+    const itineraryPolicyRow = await db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = ?").bind("itinerary_retention_days").first();
+    const itineraryRetentionDays = Math.max(0, Math.min(3650, Number(itineraryPolicyRow?.setting_value) || 0));
     const where = clauses.length ? " WHERE " + clauses.join(" AND ") : "";
     const countRow = await db.prepare("SELECT COUNT(*) AS total FROM transaction_logs" + where).bind(...values).first();
     const rows = await db.prepare(
@@ -102,7 +104,7 @@ export async function onRequestGet({ request, env }) {
       total: Number(countRow?.total || 0),
       limit,
       offset,
-      policies: { flight_cache_hours: flightCacheHours, saved_itineraries_expiry: "none" },
+      policies: { flight_cache_hours: flightCacheHours, itinerary_retention_days: itineraryRetentionDays },
     });
   } catch (error) {
     console.error("Diagnostics query failed:", error?.stack || error);
