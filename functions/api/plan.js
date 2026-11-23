@@ -471,10 +471,18 @@ async function handlePlanPost(context){
   const maxBases=Math.min(4,Math.max(1,Math.ceil(Math.max(1,dayCount-1)/2)));
   const cacheInput={trip,useSearch,maxBases};
   const cacheKey=await makeTripCacheKey(cacheInput);
+  // Compatibility lookup for reports saved before cabin/stops were added to the cache identity.
+  const legacyTrip={...trip};delete legacyTrip.cabin;delete legacyTrip.stops;
+  const legacyCacheKey=await makeTripCacheKey({trip:legacyTrip,useSearch,maxBases});
   const forceRefresh=b.forceRefresh===true;
   traceEvent(context,"cache_lookup","started",{force_refresh:forceRefresh});
-  const cachedTrip=forceRefresh?null:await readTripReportCache(env,cacheKey);
-  traceEvent(context,"cache_lookup",cachedTrip?"success":"info",{hit:!!cachedTrip});
+  let cachedTrip=forceRefresh?null:await readTripReportCache(env,cacheKey);
+  let cacheKeyUsed=cachedTrip?cacheKey:null;
+  if(!cachedTrip&&!forceRefresh){
+   cachedTrip=await readTripReportCache(env,legacyCacheKey);
+   if(cachedTrip){cacheKeyUsed=legacyCacheKey;traceEvent(context,"cache_lookup_legacy","success",{matched_legacy_key:true});}
+  }
+  traceEvent(context,"cache_lookup",cachedTrip?"success":"info",{hit:!!cachedTrip,key_version:cacheKeyUsed===legacyCacheKey?"legacy":"current"});
   const heartbeat=new TextEncoder();
   let cancelled=false,heartbeatTimer=null,deadlineTimer=null;
   const stream=new ReadableStream({
@@ -522,66 +530,18 @@ async function handlePlanPost(context){
        emit({type:"result",data:report});return;
       }
       if(cachedTrip?.report){
-       emit({type:"stage",stage:"cache",message:"Found a matching trip report. Reusing the saved itinerary and refreshing flight research…",agentTotal:1,cacheHit:true});
-       emit({type:"agent_started",agent:"Flight researcher",completed:0,total:1});
-       let combined=JSON.parse(JSON.stringify(cachedTrip.report));
+       emit({type:"stage",stage:"cache",message:"Found a matching saved trip report. Reusing the database copy without running AI or flight-provider searches.",agentTotal:0,cacheHit:true});
+       const combined=JSON.parse(JSON.stringify(cachedTrip.report));
        combined.request_context={trip,useSearch,maxBases};
-       // A cached itinerary must never retain old/AI-generated flight cards when fresh flight research fails.
-       combined.flight_options=[];
-       combined.getting_there="";
-       let freshFlight=null,flightFailure=null;
-       try{freshFlight=await runLiveFlightResearch(context,trip,emit)}
-       catch(error){flightFailure=error;combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];emit({type:"agent_failed",agent:"Flight researcher",error:error.message||"Live flight research unavailable"});}
-       const flightResearch=freshFlight?.data||{};
-       if(freshFlight){combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];combined.getting_there=flightResearch.getting_there||"";combined.research_unavailable=(combined.research_unavailable||[]).filter(x=>x.kind!=="flights");}
-       if(combined.flight_options.length)emit({type:"flight_ranking",used:false,message:"Flight options were already ranked by the shared live provider search."});
-       const fareCheck=validateFlightFareScale(flightResearch,combined.budget,null,trip.cur);
-       if(flightFailure||!freshFlight||!combined.flight_options.length){
-        combined.flight_options=[];
-        if(combined.budget){
-         combined.budget.international_flight_per_person=0;
-         combined.budget.international_flight_adult=0;
-         combined.budget.international_flight_child=0;
-         combined.budget.international_flight_infant=0;
-        }
-        combined.research=combined.research||{};
-        combined.research.flight_search_status="unavailable";
-        combined.research.flight_search_requested=true;
-        combined.research.flight_search_executed=!!(freshFlight?.queries?.length);
-        combined.research.flight_verified_result_count=0;
-        combined.research.flight_failure_reason=flightFailure?.message||"No verifiable flight options were returned.";
-        combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
-        combined.caveats.push("Live flight research could not be verified. No flight options or flight fare estimates are included; enter a fare manually or retry flight research.");
-       }
-       if(fareCheck.invalid){
-        combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
-        combined.caveats.push(fareCheck.invalid+" freshly researched flight fare option(s) failed the currency-scale check and were excluded from the trip budget.");
-        if(!fareCheck.roundTripUsable){
-         combined.budget.international_flight_per_person=0;
-         combined.budget.international_flight_adult=0;
-         combined.budget.international_flight_child=0;
-         combined.budget.international_flight_infant=0;
-        }
-       }
-       const retainedSources=(combined.research_sources||[]).filter(x=>x.agent!=="Flight researcher");
-       const freshSources=(freshFlight?.sources||[]).map(x=>({...x,agent:"Flight researcher"}));
-       combined.research_sources=sourceUnique([...retainedSources,...freshSources]);
+       combined.cache={hit:true,saved:true,createdAt:cachedTrip.createdAt,reusedWithoutResearch:true};
        combined.research=combined.research||{};
-       if(freshFlight){
-        combined.research.flight_refresh_model=freshFlight.model;
-        combined.research.flight_refresh_search_queries=freshFlight.queries.length;
-        combined.research.flight_refresh_source_count=freshFlight.sources.length;
-        combined.research.flight_refreshed_at=new Date().toISOString();
-        emit({type:"agent_completed",agent:"Flight researcher",completed:1,total:1,sourceCount:freshFlight.sources.length,searchCount:freshFlight.queries.length,resultCount:combined.flight_options.length});
+       if(!Array.isArray(combined.flight_options)||!combined.flight_options.length){
+        combined.research.flight_search_status=combined.research.flight_search_status||"not_cached";
+        combined.research.flight_failure_reason=combined.research.flight_failure_reason||"This saved report predates database storage of verified live flight results. No new search was started.";
+        combined.caveats=Array.isArray(combined.caveats)?combined.caveats:[];
+        combined.caveats.push("This itinerary was reused from the database. It contains no saved verified live flight results; use the Flights tab only if you want to run a separate flight-price search.");
        }
-       combined.research=combined.research||{};
-       if(!flightFailure&&freshFlight&&combined.flight_options.length){
-        combined.research.flight_search_status="completed";
-        combined.research.flight_search_requested=true;
-        combined.research.flight_search_executed=true;
-        combined.research.flight_verified_result_count=combined.flight_options.length;
-       }
-       combined.cache={hit:true,createdAt:cachedTrip.createdAt,flightsRefreshed:!!freshFlight&&combined.flight_options.length>0};
+       if(cacheKeyUsed!==cacheKey)await writeTripReportCache(env,cacheKey,cacheInput,combined);
        emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt});
        return;
       }
@@ -656,7 +616,7 @@ async function handlePlanPost(context){
       const homeCurrency=String(trip.cur||"INR").toUpperCase();
       const fxRate=await fxRatePromise;
       const flightResearch=specialistResults.find(x=>x.kind==="flights")?.data;
-      const flightRun=openingRuns.find(x=>x.task.kind==="flights");
+      const flightRun=openingRuns.find(x=>x.ok&&x.value?.kind==="flights");
       if(!flightRun?.ok||!flightResearch?.flight_options?.length){
        combined.flight_options=[];
        guide.budget.international_flight_per_person=0;
@@ -747,9 +707,7 @@ async function handlePlanPost(context){
       }
       combined.request_context={trip,useSearch,maxBases};
       const cacheReport=JSON.parse(JSON.stringify(combined));
-      cacheReport.flight_options=[];
-      cacheReport.getting_there="";
-      cacheReport.research_sources=(cacheReport.research_sources||[]).filter(x=>x.agent!=="Flight researcher");
+      // Keep provider-verified flight options in the saved report for identical future searches.
       const cacheSaved=await writeTripReportCache(env,cacheKey,cacheInput,cacheReport);
       combined.cache={hit:false,saved:cacheSaved,flightsRefreshed:!!flightRun?.ok&&combined.flight_options.length>0,refreshed:forceRefresh};
       emit({type:"result",data:combined,cacheHit:false,cacheSaved});
