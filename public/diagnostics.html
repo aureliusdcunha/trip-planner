@@ -28,7 +28,55 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
 .hidden{display:none!important}.foot{font-size:11px;color:var(--muted);margin-top:18px}
 @media(max-width:950px){.filters{grid-template-columns:repeat(3,minmax(0,1fr))}.retention-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.wrap{padding:18px 12px 40px}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.filters .filter:first-child{grid-column:1/-1}.retention-grid{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr 1fr}.top{align-items:flex-start}h1{font-size:25px}}
-.trace-timeline{display:grid;gap:8px}.trace-filters{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 10px}.trace-filter{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:650;cursor:pointer}.trace-filter.active{background:#173f35;color:#fff;border-color:#173f35}.trace-filter .count{display:inline-flex;min-width:18px;height:18px;align-items:center;justify-content:center;border-radius:99px;margin-left:4px;padding:0 5px;background:#edf0f2;color:#344054;font-size:10px}.trace-filter.error .count{background:#fee4e2;color:#b42318}.trace-filter.warning .count{background:#fef0c7;color:#93370d}.trace-event{align-items:center}.trace-main{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.trace-main b{display:inline}.trace-main small{display:inline}.trace-main details{flex-basis:100%;margin-top:2px}.trace-main summary{color:#475467;font-size:11px;cursor:pointer}.record-details{margin-top:12px;border:1px solid var(--line);border-radius:8px;padding:10px 12px}.record-details summary{cursor:pointer;font-weight:650;color:var(--ink)}.record-details pre{margin-top:10px}.trace-event{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:9px;padding:10px;background:#fff}.trace-dot{width:9px;height:9px;border-radius:50%;background:#8b8b8b;margin-top:6px;flex:none}.trace-dot.good{background:#18794e}.trace-dot.warn{background:#a66b12}.trace-dot.bad{background:#b42318}.trace-main{min-width:0;flex:1}.trace-main b{display:block;text-transform:capitalize}.trace-main small{display:block;color:var(--muted);font-size:11px}.trace-main pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f8f5ef;color:#202938;border:1px solid #e6ddcf;padding:9px 10px;border-radius:6px;margin:7px 0 0;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;text-shadow:none;opacity:1;max-height:260px;overflow:auto;user-select:text}.trace-event .pill{flex:none}</style>
+.trace-timeline{display:grid;gap:8px}.trace-filters{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 10px}.trace-filter{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:650;cursor:pointer}.trace-filter.active{background:#173f35;color:#fff;border-color:#173f35}.trace-filter .count{display:inline-flex;min-width:18px;height:18px;align-items:center;justify-content:center;border-radius:99px;margin-left:4px;padding:0 5px;background:#edf0f2;color:#344054;font-size:10px}.trace-filter.error .count{background:#fee4e2;color:#b42318}.trace-filter.warning .count{background:#fef0c7;color:#93370d}.trace-event{align-items:center}.trace-main{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.trace-main b{display:inline}.trace-main small{display:inline}.trace-main details{flex-basis:100%;margin-top:2px}.trace-main summary{color:#475467;font-size:11px;cursor:pointer}.record-details{margin-top:12px;border:1px solid var(--line);border-radius:8px;padding:10px 12px}.record-details summary{cursor:pointer;font-weight:650;color:var(--ink)}.record-details pre{margin-top:10px}.trace-event{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:9px;padding:10px;background:#fff}.trace-dot{width:9px;height:9px;border-radius:50%;background:#8b8b8b;margin-top:6px;flex:none}.trace-dot.good{background:#18794e}.trace-dot.warn{background:#a66b12}.trace-dot.bad{background:#b42318}.trace-main{min-width:0;flex:1}.trace-main b{display:block;text-transform:capitalize}.trace-main small{display:block;color:var(--muted);font-size:11px}.trace-main pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f8f5ef;color:#202938;border:1px solid #e6ddcf;padding:9px 10px;border-radius:6px;margin:7px 0 0;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;text-shadow:none;opacity:1;max-height:260px;overflow:auto;user-select:text}.trace-event .pill{flex:none}
+/* Diagnostics visual refresh */
+:root{--ink:#172b3a;--muted:#687987;--line:#dce5e9;--green:#087a55;--deep:#123c38;--cream:#f7faf8}
+body{background:linear-gradient(180deg,#edf5f1 0,#f7f9f8 280px,#f5f7f8 100%);color:var(--ink)}
+.wrap{max-width:1580px;padding:26px 30px 64px}
+.top{padding:18px 22px;margin:-26px -30px 26px;background:linear-gradient(115deg,#123c38,#155c4b 62%,#23765b);border:0;color:#fff;box-shadow:0 8px 24px rgba(18,60,56,.14)}
+.brand,.brand span{color:#fff}.brand span:first-child{color:#a9e4c9}.sub,.top .muted{color:#d3e6de}.top h1{color:#fff}
+.panel{border:1px solid #e0e7e9;border-radius:16px;padding:20px;margin:16px 0;background:rgba(255,255,255,.96);box-shadow:0 5px 18px rgba(26,52,61,.055)}
+.settings-panel{background:#fff;border-color:#e0e7e9;padding:18px}
+.btn{border-radius:9px;background:#087a55;border-color:#087a55;padding:9px 14px;transition:transform .15s,box-shadow .15s}
+.btn:hover{transform:translateY(-1px);box-shadow:0 4px 10px rgba(8,122,85,.16)}
+.btn.secondary{border-color:#cbd9d8;color:#17614d;background:#fff}
+.btn.blue{background:#267b99;border-color:#267b99}.btn.amber{background:#b7791f;border-color:#b7791f}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px}
+.stat{min-width:0;border:1px solid #e0e8e8;border-radius:13px;padding:14px 17px;background:#fff;box-shadow:0 3px 12px rgba(26,52,61,.035)}
+.stat b{font-size:24px;color:#163f37}.stat span{font-size:10px;letter-spacing:.08em}
+.tabbar{display:flex;gap:8px;border:0;margin:22px 0 0}
+.tab{border:1px solid #dce6e3;border-radius:10px 10px 0 0;padding:11px 17px;color:#45645a;background:#f2f7f4;font-weight:650}
+.tab.active{background:#155c4b;color:#fff;border-color:#155c4b}
+.filter-fieldset{border:1px solid #e1e8e6;border-radius:12px;padding:15px;margin:6px 0 14px}
+.filter-fieldset legend{color:#254c40;padding:0 8px}
+input,select{border-radius:9px;border-color:#d4dfdf}
+input:focus,select:focus{outline:2px solid #a7d7c3;outline-offset:1px;border-color:#2b8a68}
+.table-wrap{border:1px solid #e4e9eb;border-radius:12px}
+th{background:#f2f7f4;color:#36564c}
+tbody tr:nth-child(even){background:#f8faf9}tbody tr:hover{background:#eaf5ef}
+.detail-item{background:#f8faf9;border-color:#e1e8e6;border-radius:11px;padding:12px}
+.timing-panel{background:#f7faf9;border-color:#dce7e3}
+.lifecycle-section{margin:18px 0 20px;padding:20px;border:1px solid #dce7e2;border-radius:17px;background:linear-gradient(135deg,#fff 0,#f7fbf8 100%);box-shadow:0 7px 22px rgba(26,52,61,.055)}
+.section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:15px}
+.section-heading h2{font-size:21px;letter-spacing:-.4px;margin:3px 0 2px;color:#173f36}
+.section-heading p{margin:0;color:#718078;font-size:12px}
+.eyebrow{font-size:10px;font-weight:850;letter-spacing:.13em;color:#27805f}
+.policy-note{font-size:10px;font-weight:700;color:#477060;background:#eaf4ee;padding:6px 10px;border-radius:99px}
+.lifecycle-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.lifecycle-card{position:relative;overflow:hidden;min-width:0;padding:17px;border:1px solid #e0e9e4;border-radius:13px;background:#fff}
+.lifecycle-card:after{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:#328665}
+.flight-card:after{background:#3b83a0}.report-card:after{background:#b88a42}
+.lifecycle-icon{display:flex;width:34px;height:34px;align-items:center;justify-content:center;border-radius:10px;background:#eaf5ef;color:#247452;font-size:18px;margin-bottom:11px}
+.flight-card .lifecycle-icon{background:#eaf3f8;color:#347d9b}.report-card .lifecycle-icon{background:#faf3e7;color:#9a712f}
+.lifecycle-label{font-size:11px;font-weight:750;color:#6a7b73}
+.lifecycle-value{font-size:28px;line-height:1.2;font-weight:850;letter-spacing:-.8px;color:#183f36;margin:4px 0 8px}
+.lifecycle-desc{font-size:11px;line-height:1.55;color:#6c7b75;min-height:50px}
+.policy-tag{display:inline-block;margin-top:12px;padding:4px 8px;border-radius:99px;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.policy-tag.adjustable{background:#e9f5ed;color:#28724e}.policy-tag.fixed{background:#f0f3f4;color:#667780}
+.lifecycle-footnote{font-size:10px;line-height:1.5;color:#77857f;margin:12px 2px 0}
+#appPanel>section.panel{margin-top:0}
+@media(max-width:760px){.wrap{padding:18px 14px 42px}.top{margin:-18px -14px 20px;padding:17px 15px}.lifecycle-grid{grid-template-columns:1fr}.lifecycle-desc{min-height:0}.stats{grid-template-columns:1fr 1fr}.stat:last-child{grid-column:1/-1}}
+</style>
 </head>
 <body>
 <main class="wrap">
@@ -49,6 +97,15 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       <div class="stat"><b id="failedCount">—</b><span>Errors on this page</span></div>
       <div class="stat"><b id="retentionStat">7 days</b><span>Retention window</span></div>
     </div>
+    <section class="lifecycle-section" aria-labelledby="lifecycleTitle">
+      <div class="section-heading"><div><span class="eyebrow">DATA LIFECYCLE</span><h2 id="lifecycleTitle">Retention & cache policies</h2><p>How long Trip Planner keeps operational logs and reuses cached research.</p></div><span class="policy-note">Configured application policies</span></div>
+      <div class="lifecycle-grid">
+        <article class="lifecycle-card logs-card"><div class="lifecycle-icon">◷</div><div class="lifecycle-label">Diagnostics transactions</div><div class="lifecycle-value" id="policyLogDays">7 days</div><div class="lifecycle-desc">Adjustable log retention. Old records are deleted from D1 when this page applies the selected setting.</div><span class="policy-tag adjustable">Adjustable below</span></article>
+        <article class="lifecycle-card flight-card"><div class="lifecycle-icon">✈</div><div class="lifecycle-label">Flight-search results</div><div class="lifecycle-value">48 hours</div><div class="lifecycle-desc">Saved flight-search results are reused for up to 48 hours. Expired results trigger a fresh search.</div><span class="policy-tag fixed">Application setting</span></article>
+        <article class="lifecycle-card report-card"><div class="lifecycle-icon">⌁</div><div class="lifecycle-label">Trip-report research cache</div><div class="lifecycle-value">14 days</div><div class="lifecycle-desc">Completed non-flight trip research can be reused for 14 days. Flight options are excluded and researched separately.</div><span class="policy-tag fixed">Application setting</span></article>
+      </div>
+      <p class="lifecycle-footnote">The flight and trip-report cache periods are currently defined by the application; they are displayed here for visibility and are not editable from this page. Expiry means a cached result is no longer reused; it does not necessarily mean its database row is immediately deleted.</p>
+    </section>
     <nav class="tabbar" aria-label="Diagnostics settings"><button class="tab active" id="filterTab" type="button">Filter Settings</button><button class="tab" id="listTab" type="button">List Settings</button></nav>
     <section class="panel settings-panel" id="filterSettings">
       <div class="filters">
@@ -258,14 +315,14 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       localStorage.setItem("tp_diag_retention_days",String(days));state.retentionDays=days;
       const response=await fetch("/api/diagnostics",{method:"POST",headers:{Authorization:"Bearer "+state.token,"content-type":"application/json"},body:JSON.stringify({action:"apply_retention",retention_days:days,delete_before:deleteBefore||null})});
       const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Unable to apply retention settings.");
-      $("retentionStat").textContent=days+" days";
+      $("retentionStat").textContent=days+" days";$("policyLogDays").textContent=days+" days";
       if(showMessage){$("settingsMessage").textContent="Browser-local retention saved. "+data.deleted+" older log(s) permanently deleted from D1.";$("settingsMessage").classList.remove("hidden","error")}
       return data;
     }catch(error){if(showMessage){$("settingsMessage").textContent=error.message;$("settingsMessage").classList.remove("hidden");$("settingsMessage").classList.add("error")}throw error}
     finally{buttons.forEach(b=>b.disabled=false)}
   }
   $("retentionDays").value=String([1,3,7,14,30,60,90,180,365].includes(state.retentionDays)?state.retentionDays:7);
-  $("retentionStat").textContent=$("retentionDays").value+" days";
+  $("retentionStat").textContent=$("retentionDays").value+" days";$("policyLogDays").textContent=$("retentionDays").value+" days";
   $("saveRetentionBtn").addEventListener("click",async()=>{try{await saveRetention(null,true);await load()}catch{}});
   $("pruneBtn").addEventListener("click",async()=>{const d=$("deleteBefore").value;if(!d){$("settingsMessage").textContent="Choose a cutoff date first.";$("settingsMessage").classList.remove("hidden");return}try{await saveRetention(d,true);await load()}catch{}});
   fetch("/version.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(v=>{if(v?.version)$("versionLabel").textContent="Version "+v.version}).catch(()=>{});
