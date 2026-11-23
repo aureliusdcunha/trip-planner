@@ -1,5 +1,5 @@
 {
-  "version": "1.7.43",
+  "version": "1.7.44",
   "released": "2026-11-23",
-  "releaseName": "Simplify trip entry to new search or locator retrieval"
+  "releaseName": "Stabilize AI fallback orchestration and response parsing"
 }
