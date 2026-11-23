@@ -449,6 +449,7 @@ async function runLiveFlightResearch(context,trip,emit,searchCurrency=trip.cur){
   cabin:trip.cabin||"Any",stops:trip.stops||"Any"
  });
  const options=Array.isArray(result.options)?result.options:[];
+ traceEvent(context,"flight_cache",result.cacheHit?"hit":"provider_result",{provider:result.provider||"Flight provider",searched_at:result.searchedAt||null,expires_at:result.cacheExpiresAt||null,options:options.length});
  const outbound=options.filter(x=>String(x.segment||"").toLowerCase()==="outbound");
  const returning=options.filter(x=>String(x.segment||"").toLowerCase()==="return");
  if(!outbound.length||!returning.length)throw new Error("Live flight providers did not return usable options for both outbound and return legs.");
@@ -456,7 +457,7 @@ async function runLiveFlightResearch(context,trip,emit,searchCurrency=trip.cur){
  const queryCount=Math.max(1,Number(result.searchesUsed)||8);
  const queries=Array.from({length:queryCount},(_,i)=>"Provider search "+(i+1)+": "+trip.from+" to "+trip.dest+" "+trip.d1+"/"+trip.d2);
  traceEvent(context,"flight_research","success",{provider:result.provider||"SerpApi",options:options.length,outbound:outbound.length,return:returning.length,source_count:sources.length,search_count:queryCount});
- return {data:{flight_options:options,getting_there:"Live provider-backed Google Flights results via "+(result.provider||"SerpApi")},sources,queries,model:result.provider||"SerpApi",status:"completed"};
+ return {data:{flight_options:options,getting_there:(result.cacheHit?"Saved provider-backed Google Flights results (48-hour cache) via ":"Live provider-backed Google Flights results via ")+(result.provider||"SerpApi")},sources,queries,model:result.provider||"SerpApi",status:"completed",cacheHit:!!result.cacheHit,searchedAt:result.searchedAt||null,cacheExpiresAt:result.cacheExpiresAt||null};
 }
 function makeBaseSchedule(areas,dayCount){
  const schedule=[];
@@ -564,12 +565,16 @@ async function handlePlanPost(context){
         const refreshed=await runLiveFlightResearch(context,trip,emit,localFlightCurrency);
         combined.flight_options=refreshed.data.flight_options;
         combined.getting_there=refreshed.data.getting_there;
-        combined.liveFlightSearchAt=new Date().toISOString();
+        combined.liveFlightSearchAt=refreshed.searchedAt||new Date().toISOString();
+         combined.liveFlightCacheHit=!!refreshed.cacheHit;
+         combined.liveFlightCacheExpiresAt=refreshed.cacheExpiresAt||null;
         combined.liveFlightProvider=refreshed.model;
         combined.liveFlightSearchKey=[trip.from,trip.dest,trip.d1,trip.d2,trip.cur].join("|");
         combined.research.flight_search_status="completed";
         combined.research.flight_provider=refreshed.model;
         combined.research.flight_refreshed_at=combined.liveFlightSearchAt;
+         combined.research.flight_cache_hit=!!refreshed.cacheHit;
+         combined.research.flight_cache_expires_at=refreshed.cacheExpiresAt||null;
         combined.research.flight_option_count=combined.flight_options.length;
         combined.research.flight_source_count=refreshed.sources.length;
         combined.research.flight_search_queries=refreshed.queries.length;
@@ -577,7 +582,7 @@ async function handlePlanPost(context){
         combined.research_unavailable=combined.research_unavailable.filter(x=>x.kind!=="flights");
         combined.caveats=combined.caveats.filter(x=>!/contains no saved verified live flight results|no new search was started/i.test(String(x)));
         flightRefresh={ok:true,options:combined.flight_options.length,provider:refreshed.model};
-        traceEvent(context,"cache_flight_refresh","success",{provider:refreshed.model,options:combined.flight_options.length,sources:refreshed.sources.length,searches:refreshed.queries.length});
+        traceEvent(context,"cache_flight_refresh",refreshed.cacheHit?"cache_hit":"success",{provider:refreshed.model,options:combined.flight_options.length,sources:refreshed.sources.length,searches:refreshed.queries.length,cache_expires_at:refreshed.cacheExpiresAt||null});
         emit({type:"agent_completed",agent:"Live flight-price refresh",completed:1,total:1,sourceCount:refreshed.sources.length,searchCount:refreshed.queries.length});
        }catch(error){
         const message=error?.message||String(error);
