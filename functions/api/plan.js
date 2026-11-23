@@ -249,6 +249,24 @@ async function rankFlightOptionsWithWorkersAI(options,env){
   return {options:[...ranked,...candidates.filter((_,i)=>!used.has(i)),...options.slice(40)],used:true};
  }catch(error){console.warn("Workers AI flight ranking unavailable; retaining source order:",error?.message||error);return {options,used:false}}
 }
+async function runWorkersAIAgentFallback(kind,ctx,env,label){
+ const schema=schemas[kind];
+ if(!schema)return null;
+ const messages=[
+  {role:"system",content:"You are a careful travel research assistant. Return only valid JSON matching the supplied JSON schema. Never fabricate live availability, flight numbers, exact schedules, current fares or citations. Use sensible indicative planning estimates where appropriate and clearly label uncertainty in the provided fields. All numeric costs must be in destination local currency."},
+  {role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false})+"\\n\\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}
+ ];
+ const guarded=await runWorkersAIWithQuota(env,"@cf/zai-org/glm-4.7-flash",messages,{messages,max_completion_tokens:kind==="guide"?2400:kind==="attractions"||kind==="day"?2800:1800,chat_template_kwargs:{enable_thinking:false}},kind==="guide"?2400:kind==="attractions"||kind==="day"?2800:1800);
+ if(!guarded.allowed)throw new Error(label+": Gemini models are unavailable and Workers AI fallback is unavailable ("+String(guarded.reason||"quota or binding unavailable")+").");
+ const result=guarded.result;
+ const raw=typeof result?.response==="string"?result.response:typeof result?.result==="string"?result.result:Array.isArray(result?.choices)?result.choices[0]?.message?.content:result?.output_text;
+ const cleaned=String(raw||"").replace(/^\\s*```(?:json)?/i,"").replace(/```\\s*$/,"").trim();
+ if(!cleaned)throw new Error(label+": Workers AI fallback returned an empty response.");
+ let data;try{data=JSON.parse(cleaned)}catch{throw new Error(label+": Workers AI fallback returned invalid JSON.");}
+ const issue=validateAgent(kind,data,{...ctx,useSearch:false});
+ if(issue)throw new Error(label+": Workers AI fallback response failed validation: "+issue);
+ return {data,sources:[],queries:[],model:"Workers AI · GLM-4.7-Flash fallback",status:"completed",fallback:true,quota:guarded.quota};
+}
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
  const agentModelState={...modelState,index:0,switched:false,freeTier:modelState.freeTier,searchNoticeSent:false,health:modelState.health};
@@ -258,7 +276,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
  let lastModel="",capacityRetriesForModel=0;
  for(let attempt=0;attempt<20;attempt++){
   while(agentModelState.index<agentModelState.models.length&&agentModelState.health?.disabled?.has(agentModelState.models[agentModelState.index]))agentModelState.index++;
-  if(agentModelState.index>=agentModelState.models.length)throw new Error(label+": all configured Gemini models have been temporarily paused after rate-limit or overload responses from other researchers.");
+  if(agentModelState.index>=agentModelState.models.length){const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models have been temporarily paused after rate-limit or overload responses from other researchers.");}
   if(Date.now()>=agentDeadline)throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");
   await acquireRequestSlot(requestGate);
   if(Date.now()>=agentDeadline){releaseRequestSlot(requestGate);throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
@@ -385,7 +403,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
    try{data=JSON.parse(output.trim());validationIssue=validateAgent(kind,data,ctx)}
    catch{validationIssue="Gemini returned incomplete or invalid JSON."}
   }
-  if(kind==="flights"&&data&&(!ctx.useSearch||queries.length===0||sources.length===0)){
+  if(kind==="flights"&&ctx.requireVerifiedFlightSearch===true&&data&&(!ctx.useSearch||queries.length===0||sources.length===0)){
    throw new Error(label+": live flight research could not be verified. Search must be enabled and at least one real search query and source are required; generated flight suggestions have been discarded.");
   }
   if((status==="completed"||status==="incomplete")&&data&&!validationIssue){
@@ -501,7 +519,7 @@ async function handlePlanPost(context){
       const modelState={primary:primaryModel,models:modelCandidates,index:0,switched:false,freeTier:false,searchNoticeSent:false,health:{disabled:new Set(),reasons:new Map()}};
       const retryBudget={remaining:18};
       const requestBudget={remaining:90};
-      const requestGate=createRequestGate(2,2500);
+      const requestGate=createRequestGate(2,4000);
       if(b.retryOnly&&cachedTrip?.report){
        const request=b.retryOnly,kind=String(request.kind||""),areaName=clip(request.area,100),date=clip(request.date,10);
        const allowed=["flights","stay","attractions","dining","transport","day"];
