@@ -1,5 +1,5 @@
 {
-  "version": "1.7.26",
+  "version": "1.7.27",
   "released": "2026-11-23",
-  "releaseName": "Correct flight fare currency conversion for trip budgets"
+  "releaseName": "48-hour flight fare cache and provider usage reduction"
 }
