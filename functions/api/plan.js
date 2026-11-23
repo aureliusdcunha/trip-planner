@@ -509,7 +509,7 @@ async function handlePlanPost(context){
        traceEvent(context,"retry_agent:"+kind,"started",{area:areaName,date});
        const result=kind==="flights"?await runLiveFlightResearch(context,trip,emit):await runAgent(kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
        traceEvent(context,"retry_agent:"+kind,"success",{model:result.model});
-       if(kind==="flights"){const data=result.data;report.flight_options=data.flight_options||[];report.getting_there=data.getting_there||"";const ranked=await rankFlightOptionsWithWorkersAI(report.flight_options,env);report.flight_options=ranked.options;}
+       if(kind==="flights"){const data=result.data;report.flight_options=data.flight_options||[];report.getting_there=data.getting_there||"";}
        else if(kind==="stay"){if(!area)throw new Error("The requested area was not found in the saved report.");area.hotel_options=result.data.hotel_options||[];}
        else if(kind==="attractions"){report.highlights=(report.highlights||[]).filter(x=>String(x.area||"")!==areaName).concat(result.data.highlights||[]);}
        else if(kind==="dining"){report.dining=(report.dining||[]).filter(x=>String(x.area||"")!==areaName).concat(result.data.dining||[]);}
@@ -534,11 +534,7 @@ async function handlePlanPost(context){
        catch(error){flightFailure=error;combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];emit({type:"agent_failed",agent:"Flight researcher",error:error.message||"Live flight research unavailable"});}
        const flightResearch=freshFlight?.data||{};
        if(freshFlight){combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];combined.getting_there=flightResearch.getting_there||"";combined.research_unavailable=(combined.research_unavailable||[]).filter(x=>x.kind!=="flights");}
-       if(combined.flight_options.length){
-        const ranked=await rankFlightOptionsWithWorkersAI(combined.flight_options,env);
-        combined.flight_options=ranked.options;
-        emit({type:"flight_ranking",used:ranked.used,message:ranked.used?"Comparing freshly researched flight prices, journey times and stops…":"Keeping the freshly researched flight order."});
-       }
+       if(combined.flight_options.length)emit({type:"flight_ranking",used:false,message:"Flight options were already ranked by the shared live provider search."});
        const fareCheck=validateFlightFareScale(flightResearch,combined.budget,null,trip.cur);
        if(flightFailure||!freshFlight||!combined.flight_options.length){
         combined.flight_options=[];
@@ -682,7 +678,7 @@ async function handlePlanPost(context){
        combined.research.flight_search_executed=true;
        combined.research.flight_verified_result_count=flightResearch.flight_options.length;
       }
-      if(flightResearch?.flight_options?.length){const ranked=await rankFlightOptionsWithWorkersAI(flightResearch.flight_options,env);flightResearch.flight_options=ranked.options;combined.flight_options=ranked.options;emit({type:"flight_ranking",used:ranked.used,message:ranked.used?"Comparing flight prices, journey times, stops and layovers…":"Keeping the researched flight order while preparing your comparisons."})}
+      if(flightResearch?.flight_options?.length)combined.flight_options=flightResearch.flight_options;
       const fareScaleCheck=validateFlightFareScale(flightResearch,guide.budget,fxRate,homeCurrency);
       if(fareScaleCheck.invalid){
        guide.caveats=Array.isArray(guide.caveats)?guide.caveats:[];
