@@ -25,6 +25,7 @@ export async function onRequestGet({request,env}){
  try{await setup(db);const url=new URL(request.url),token=url.searchParams.get("owner_token")||"",id=url.searchParams.get("id")||"";
  if(!validOwner(token))return json({error:"Search history access token is invalid."},401);
  const owner=await hash(token);
+ const staleCutoff=new Date(Date.now()-30*60*1000).toISOString();await db.prepare("UPDATE search_sessions SET status='abandoned',updated_at=? WHERE owner_hash=? AND status='in_progress' AND last_activity < ?").bind(new Date().toISOString(),owner,staleCutoff).run();
  if(id){if(!validId(id))return json({error:"Invalid search ID."},400);const row=await db.prepare("SELECT session_id,status,destination,start_date,end_date,input_json,progress_json,report_json,duration_ms,created_at,updated_at,last_activity FROM search_sessions WHERE session_id=? AND owner_hash=?").bind(id,owner).first();if(!row)return json({error:"Saved search not found."},404);return json({session:{...row,input:parse(row.input_json,{}),progress:parse(row.progress_json,{}),report:parse(row.report_json,null)}})}
  const rows=await db.prepare("SELECT session_id,status,destination,start_date,end_date,duration_ms,created_at,updated_at,last_activity,progress_json,CASE WHEN report_json IS NULL THEN 0 ELSE 1 END AS has_report FROM search_sessions WHERE owner_hash=? ORDER BY last_activity DESC LIMIT 50").bind(owner).all();
  return json({sessions:(rows.results||[]).map(row=>({...row,progress:parse(row.progress_json,{})}))});
