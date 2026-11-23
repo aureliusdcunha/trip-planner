@@ -50,6 +50,22 @@ export async function onRequestGet({ request, env }) {
       return json({ log });
     }
 
+    const idsParam = (url.searchParams.get("ids") || "").trim();
+    if (idsParam) {
+      const ids = [...new Set(idsParam.split(",").map(value => value.trim()).filter(Boolean))];
+      if (!ids.length || ids.length > 100 || ids.some(value => value.length > 160)) {
+        return json({ error: "Select between 1 and 100 valid transaction IDs per download." }, 400);
+      }
+      const placeholders = ids.map(() => "?").join(",");
+      const rows = await db.prepare(
+        "SELECT log_json FROM transaction_logs WHERE transaction_id IN (" + placeholders + ")"
+      ).bind(...ids).all();
+      const logs = (rows.results || []).map(row => {
+        try { return JSON.parse(row.log_json); } catch { return row.log_json; }
+      });
+      return json({ logs, requested_count: ids.length, returned_count: logs.length });
+    }
+
     const endpoint = (url.searchParams.get("endpoint") || "").trim();
     const outcome = (url.searchParams.get("outcome") || "").trim();
     const status = (url.searchParams.get("status") || "").trim();
