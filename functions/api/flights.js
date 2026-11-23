@@ -5,6 +5,8 @@ import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 // This endpoint is search-only: it never requests booking tokens or creates bookings.
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
 const clip=(v,n=120)=>String(v??"").trim().slice(0,n);
+function googleFlightsCurrencyUrl(value,currency){try{const u=new URL(String(value||""));if(!/(^|\\.)google\\.com$/i.test(u.hostname)||u.protocol!=="https:"||!/^[A-Z]{3}$/.test(String(currency||"").toUpperCase()))return value||"";u.searchParams.set("curr",String(currency).toUpperCase());return u.toString()}catch{return value||""}}
+
 const FLIGHT_CACHE_TTL_MS=48*60*60*1000;
 const FLIGHT_CACHE_TABLE=`CREATE TABLE IF NOT EXISTS flight_search_cache (cache_key TEXT PRIMARY KEY,search_json TEXT NOT NULL,result_json TEXT NOT NULL,searched_at TEXT NOT NULL,expires_at TEXT NOT NULL)`;
 async function makeFlightCacheKey(input){const bytes=new TextEncoder().encode(JSON.stringify(input)),digest=await crypto.subtle.digest("SHA-256",bytes);return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("")}
@@ -180,6 +182,7 @@ async function handleFlightsPost(context){
   if(!b.origin||!b.destination)return json({error:"Origin and destination are required."},400);
   if(!dateOk(b.departureDate)||!dateOk(b.returnDate)||b.returnDate<b.departureDate)return json({error:"Enter valid outbound and return dates."},400);
   const currency=clip(b.currency,3).toUpperCase()||"INR";
+  const homeCurrency=clip(b.homeCurrency||"INR",3).toUpperCase();
   let from,to;
   traceEvent(context,"airport_resolution","started",{origin:b.origin,destination:b.destination});
   try{const resolve=async value=>{if(key){try{const r=await resolveAirport(value,key);return typeof r==="string"?r:r.id}catch{}}return resolveFallbackAirport(value,rapidKey,perceptKey)};const resolved=await Promise.all([resolve(b.origin),resolve(b.destination)]);from=resolved[0];to=resolved[1];traceEvent(context,"airport_resolution","success",{origin_iata:from,destination_iata:to});}
@@ -188,7 +191,7 @@ async function handleFlightsPost(context){
   if(!/^[A-Z]{3}$/.test(currency))return json({error:"Choose a valid trip currency."},400);
    const cacheInput={origin:from,destination:to,departureDate:b.departureDate,returnDate:b.returnDate,currency,adults:Number(b.adults)||1,children:Number(b.children)||0,infants:Number(b.infants)||0,cabin:clip(b.cabin||"Any",30),stops:clip(b.stops||"Any",30)};
    const cacheKey=await makeFlightCacheKey(cacheInput);
-   if(b.forceRefresh!==true){const cached=await readFlightCache(env,cacheKey);if(cached){traceEvent(context,"flight_cache","hit",{provider:cached.provider,options:cached.options.length,searched_at:cached.searchedAt,expires_at:cached.cacheExpiresAt});return json(cached)}}
+   if(b.forceRefresh!==true){const cached=await readFlightCache(env,cacheKey);if(cached){cached.options=cached.options.map(option=>({...option,source_url:googleFlightsCurrencyUrl(option.source_url,homeCurrency)}));traceEvent(context,"flight_cache","hit",{provider:cached.provider,options:cached.options.length,searched_at:cached.searchedAt,expires_at:cached.cacheExpiresAt,provider_currency:homeCurrency});return json(cached)}}
    traceEvent(context,"flight_cache","miss",{origin:from,destination:to,departure:b.departureDate,return:b.returnDate,currency});
 
   const legs=[{segment:"outbound",from,to,date:b.departureDate},{segment:"return",from:to,to:from,date:b.returnDate}];
@@ -201,7 +204,7 @@ async function handleFlightsPost(context){
      engine:"google_flights",departure_id:leg.from,arrival_id:leg.to,outbound_date:leg.date,type:"2",
      travel_class:cabin.value,currency,gl:"in",hl:"en",adults:"1",sort_by:"2",show_hidden:"true"
     },key);
-    const sourceUrl=result.search_metadata?.google_flights_url||"";
+    const sourceUrl=googleFlightsCurrencyUrl(result.search_metadata?.google_flights_url||"",homeCurrency);
     const candidates=[...(result.best_flights||[]),...(result.other_flights||[])];
     const mapped=candidates.map(item=>mapFlight(item,leg.segment,cabin.label,currency,sourceUrl)).filter(Boolean);
     return mapped;
