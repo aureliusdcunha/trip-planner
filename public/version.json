@@ -1,5 +1,5 @@
 {
-  "version": "1.7.27",
+  "version": "1.7.28",
   "released": "2026-11-23",
-  "releaseName": "48-hour flight fare cache and provider usage reduction"
+  "releaseName": "Remove duplicate fare from provider link"
 }
