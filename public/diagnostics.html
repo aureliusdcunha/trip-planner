@@ -6,21 +6,22 @@
 <meta name="robots" content="noindex,nofollow">
 <title>TripPlanner · Diagnostics</title>
 <style>
-:root{color-scheme:light;--ink:#2c241b;--muted:#82796d;--line:#e9dfd0;--cream:#fbf8f1;--red:#8b1e24;--gold:#c7a35a;--green:#18794e;--amber:#a66b12}
-*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:14px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
-.wrap{max-width:1440px;margin:auto;padding:28px 22px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
-.brand{font-weight:850;font-size:19px;letter-spacing:-.5px;color:#0b3154}.brand span{color:#0d9693}.sub{color:var(--muted);font-size:12px;margin-top:3px}
-h1{font:700 30px/1.15 Georgia,serif;margin:0 0 5px}.muted{color:var(--muted)}.top-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.btn{border:1px solid var(--red);background:var(--red);color:#fff;border-radius:8px;padding:9px 13px;font-weight:750;cursor:pointer}.btn.secondary{background:#fff;color:var(--red)}.btn:disabled{opacity:.5;cursor:wait}
-.panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0;box-shadow:0 4px 18px rgba(54,38,18,.04)}
+:root{color-scheme:light;--ink:#343a40;--muted:#6b7280;--line:#d5d8dc;--cream:#f5f6f7;--red:#086b3b;--gold:#d4a64a;--green:#08743f;--amber:#a66b12}
+*{box-sizing:border-box}body{margin:0;background:#fff;color:var(--ink);font:14px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+.wrap{max-width:1500px;margin:auto;padding:22px 26px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:28px;padding:0 0 16px;border-bottom:1px solid #e3e5e8}
+.brand{font-weight:850;font-size:19px;letter-spacing:-.5px;color:#0b3154}.brand span{color:#087a45}.sub{color:var(--muted);font-size:12px;margin-top:3px}
+h1{font:500 30px/1.15 Inter,system-ui,sans-serif;margin:0 0 5px}.muted{color:var(--muted)}.top-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.btn{border:1px solid #08743f;background:#08743f;color:#fff;border-radius:2px;padding:9px 13px;font-weight:650;cursor:pointer}.btn.secondary{background:#fff;color:#08743f}.btn.blue{background:#55b8d4;border-color:#55b8d4}.btn.amber{background:#e9a93f;border-color:#e9a93f;color:#fff}.btn:disabled{opacity:.5;cursor:wait}
+.panel{background:#fff;border:1px solid #d7dadd;border-radius:0;padding:16px;margin:14px 0;box-shadow:none}
+.settings-panel{background:#eee;border:1px solid #d1d1d1;padding:12px 10px 14px}.tabbar{display:flex;gap:0;border-bottom:1px solid #d4d4d4;margin:0 0 0}.tab{border:0;background:transparent;color:#39704f;padding:10px 13px;cursor:pointer}.tab.active{background:#08743f;color:#fff}.filter-fieldset{border:1px solid #c8c8c8;padding:10px;margin:8px 0 14px}.filter-fieldset legend{font-weight:700;color:#454545;padding:0 5px}.settings-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.settings-footer .filter-actions{margin-left:auto}.retention-grid{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:14px;align-items:end}.retention-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#424242}.retention-grid input,.retention-grid select{width:100%}
 .auth{max-width:520px;margin:70px auto}.auth label,.filter label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:11px;font-weight:750}
 input,select{min-width:0;height:39px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff;color:var(--ink);font:inherit}
 .auth input{width:100%;margin:6px 0 12px}.auth .btn{width:100%}
 .notice{padding:11px 13px;border-radius:9px;background:#fff6e5;color:#76531d;margin:12px 0;font-size:12px}.error{background:#fff0ef;color:#9b2823}.filters{display:grid;grid-template-columns:2fr repeat(5,minmax(120px,1fr));gap:10px;align-items:end}
 .filter{min-width:0}.filter input,.filter select{width:100%}.filter-actions{display:flex;gap:8px;flex-wrap:wrap}
-.stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.stat{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 14px;min-width:120px}.stat b{display:block;font-size:19px}.stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:860px} .select-cell{width:38px;text-align:center!important} .select-cell input{width:16px;height:16px;accent-color:var(--red);cursor:pointer;vertical-align:middle} .bulk-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 12px}.bulk-actions .muted{font-size:12px} .bulk-actions .btn{white-space:nowrap}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid #f0e9df;font-size:12px;white-space:nowrap}th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em;background:#fffdf9;position:sticky;top:0}
-tbody tr{cursor:pointer}tbody tr:hover{background:#fffaf0}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}.pill{display:inline-block;border-radius:99px;padding:3px 8px;font-size:10px;font-weight:800;background:#edf5ef;color:var(--green)}.pill.bad{background:#fff0ef;color:#b3261e}.pill.warn{background:#fff5df;color:var(--amber)}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.stat{border:1px solid var(--line);background:#fff;border-radius:2px;padding:10px 14px;min-width:120px}.stat b{display:block;font-size:19px}.stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:860px} .select-cell{width:38px;text-align:center!important} .select-cell input{width:16px;height:16px;accent-color:var(--red);cursor:pointer;vertical-align:middle} .bulk-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 12px}.bulk-actions .muted{font-size:12px} .bulk-actions .btn{white-space:nowrap}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid #d8dadd;font-size:12px;white-space:nowrap}th{color:#333;font-size:11px;text-transform:none;letter-spacing:0;background:#fff;position:sticky;top:0;font-weight:750}
+tbody tr{cursor:pointer}tbody tr:nth-child(even){background:#f7f7f7}tbody tr:hover{background:#eaf3ed}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}.pill{display:inline-block;border-radius:99px;padding:3px 8px;font-size:10px;font-weight:800;background:#edf5ef;color:var(--green)}.pill.bad{background:#fff0ef;color:#b3261e}.pill.warn{background:#fff5df;color:var(--amber)}
 .pager{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-top:13px}.empty{text-align:center;padding:35px;color:var(--muted)}
 .detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0}.detail-item{background:#fffaf2;border:1px solid var(--line);border-radius:9px;padding:9px}.detail-item small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.detail-item b{overflow-wrap:anywhere}
 pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;overflow:auto;max-height:65vh;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -32,8 +33,8 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
 <body>
 <main class="wrap">
   <header class="top">
-    <div><div class="brand">Trip<span>Planner</span> <span style="color:#8b1e24;font-size:12px">DIAGNOSTICS</span></div><div class="sub">Transaction audit trail · Last seven days</div></div>
-    <div class="top-right"><span class="muted" id="versionLabel">Version 1.7.15</span><button class="btn secondary" id="refreshBtn" type="button">↻ Refresh</button><button class="btn secondary" id="logoutBtn" type="button">Lock diagnostics</button></div>
+    <div><div class="brand">Trip<span>Planner</span> <span style="color:#8b1e24;font-size:12px">DIAGNOSTICS</span></div><div class="sub">Transaction audit trail · Configurable retention</div></div>
+    <div class="top-right"><span class="muted" id="versionLabel">Version —</span><button class="btn secondary" id="refreshBtn" type="button">↻ Refresh</button><button class="btn secondary" id="logoutBtn" type="button">Lock diagnostics</button></div>
   </header>
 
   <section id="authPanel" class="panel auth">
@@ -46,9 +47,10 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     <div class="stats">
       <div class="stat"><b id="totalCount">—</b><span>Matching transactions</span></div>
       <div class="stat"><b id="failedCount">—</b><span>Errors on this page</span></div>
-      <div class="stat"><b>7 days</b><span>Retention window</span></div>
+      <div class="stat"><b id="retentionStat">7 days</b><span>Retention window</span></div>
     </div>
-    <section class="panel">
+    <nav class="tabbar" aria-label="Diagnostics settings"><button class="tab active" id="filterTab" type="button">Filter Settings</button><button class="tab" id="listTab" type="button">List Settings</button></nav>
+    <section class="panel settings-panel" id="filterSettings">
       <div class="filters">
         <div class="filter"><label for="searchInput">Search</label><input id="searchInput" placeholder="Transaction ID, payload, error…"></div>
         <div class="filter"><label for="endpointFilter">Endpoint</label><select id="endpointFilter"><option value="">All endpoints</option><option value="plan">Plan</option><option value="flights">Flights</option><option value="chat">Chat</option><option value="quota">Quota</option></select></div>
@@ -58,12 +60,28 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
         <div class="filter"><label for="toFilter">To date</label><input id="toFilter" type="date"></div>
       </div>
       <div class="filter-actions" style="margin-top:12px"><button class="btn" id="applyBtn" type="button">Apply filters</button><button class="btn secondary" id="clearBtn" type="button">Clear filters</button></div>
+      <div class="settings-footer"><span class="muted">Auto-update transaction list</span><div class="filter-actions"><button class="btn" id="refreshNowBtn" type="button">↻ Apply Filters</button><button class="btn blue" id="saveFilterBtn" type="button">▣ Set As Default</button><button class="btn amber" id="clearBtn" type="button">✕ Clear Filters</button></div></div>
       <div id="loadError" class="notice error hidden"></div>
+    </section>
+    <section class="panel settings-panel hidden" id="listSettings">
+      <fieldset class="filter-fieldset"><legend>Log Retention Settings</legend>
+        <div class="retention-grid">
+          <label for="retentionDays">Keep transaction logs for
+            <select id="retentionDays"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option><option value="180">180 days</option><option value="365">365 days</option></select>
+          </label>
+          <label for="deleteBefore">Manually delete logs completed before
+            <input id="deleteBefore" type="date">
+          </label>
+          <div class="filter-actions"><button class="btn" id="saveRetentionBtn" type="button">Save Retention Settings</button><button class="btn amber" id="pruneBtn" type="button">Delete Older Logs</button></div>
+        </div>
+      </fieldset>
+      <p class="muted" id="retentionHelp">Logs are automatically removed after the configured retention period. Changing this setting also applies cleanup immediately.</p>
+      <div id="settingsMessage" class="notice hidden"></div>
     </section>
 
     <section class="panel">
       <div class="bulk-actions"><label class="muted"><input id="selectPage" type="checkbox" style="width:16px;height:16px;vertical-align:middle;accent-color:var(--red)"> Select all on this page</label><span class="muted" id="selectionCount">0 logs selected</span><button class="btn" id="downloadSelectedBtn" type="button" disabled>Download selected logs</button><button class="btn secondary" id="clearSelectionBtn" type="button" disabled>Clear selection</button></div>
-      <div class="table-wrap"><table><thead><tr><th class="select-cell">Select</th><th>Completed</th><th>Endpoint</th><th>HTTP</th><th>Outcome</th><th>Duration</th><th>Transaction ID</th></tr></thead><tbody id="logRows"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th class="select-cell"><input id="selectPageHeader" type="checkbox" aria-label="Select all visible transactions"></th><th>#</th><th>Endpoint / Path</th><th>HTTP</th><th>Outcome</th><th>Duration</th><th>Completed</th><th>Transaction ID</th></tr></thead><tbody id="logRows"></tbody></table></div>
       <div id="emptyState" class="empty hidden">No transactions match these filters.</div>
       <div class="pager"><span class="muted" id="pageInfo">Loading transactions…</span><div class="filter-actions"><button class="btn secondary" id="prevBtn" type="button">Previous</button><button class="btn secondary" id="nextBtn" type="button">Next</button></div></div>
     </section>
@@ -97,10 +115,11 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     return p.toString();
   }
   async function load(){
-    hideError($("loadError")); $("logRows").innerHTML='<tr><td colspan="7" class="empty">Loading transactions…</td></tr>';
+    hideError($("loadError")); $("logRows").innerHTML='<tr><td colspan="8" class="empty">Loading transactions…</td></tr>';
     try{
       const data=await request("/api/diagnostics?"+queryString());
       state.total=data.total||0;
+      if(data.retention_days){$("retentionDays").value=String(data.retention_days);$("retentionStat").textContent=data.retention_days+" days";}
       const rows=data.transactions||[];
       $("totalCount").textContent=state.total.toLocaleString();
       $("failedCount").textContent=rows.filter(x=>x.outcome!=="success").length.toLocaleString();
@@ -108,7 +127,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       $("logRows").innerHTML=rows.map(row=>{
         const outcome=row.outcome||"unknown",cls=outcome==="success"?"":outcome==="client_error"?"warn":"bad",id=String(row.transaction_id||"");
         const checked=state.selectedLogs.has(id)?" checked":"";
-        return '<tr data-id="'+esc(id)+'"><td class="select-cell"><input class="log-select" type="checkbox" data-select-id="'+esc(id)+'" aria-label="Select transaction '+esc(id)+'"'+checked+'></td><td>'+esc(dateText(row.completed_at))+'</td><td><b>'+esc(String(row.endpoint||"").toUpperCase())+'</b></td><td>'+esc(row.http_status)+'</td><td><span class="pill '+cls+'">'+esc(outcome.replaceAll("_"," "))+'</span></td><td>'+esc(row.duration_ms)+' ms</td><td class="mono">'+esc(id)+'</td></tr>';
+        return '<tr data-id="'+esc(id)+'"><td class="select-cell"><input class="log-select" type="checkbox" data-select-id="'+esc(id)+'" aria-label="Select transaction '+esc(id)+'"'+checked+'></td><td>'+(state.offset+rows.indexOf(row)+1)+'</td><td><b>'+esc(String(row.endpoint||"").toUpperCase())+'</b><br><span class="muted mono">/api/'+esc(row.endpoint||"")+'</span></td><td>'+esc(row.http_status)+'</td><td><span class="pill '+cls+'">'+esc(outcome.replaceAll("_"," "))+'</span></td><td>'+esc(row.duration_ms)+' ms</td><td>'+esc(dateText(row.completed_at))+'</td><td class="mono">'+esc(id)+'</td></tr>';
       }).join("");
       $("logRows").querySelectorAll("input.log-select").forEach(box=>box.addEventListener("click",e=>e.stopPropagation()));
       $("logRows").querySelectorAll("input.log-select").forEach(box=>box.addEventListener("change",()=>{
@@ -118,6 +137,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
         updateSelectionUI();
       }));
       $("selectPage").checked=rows.length>0&&rows.every(x=>state.selectedLogs.has(String(x.transaction_id)));
+      $("selectPageHeader").checked=$("selectPage").checked;
       $("selectPage").indeterminate=rows.some(x=>state.selectedLogs.has(String(x.transaction_id)))&&!$("selectPage").checked;
       updateSelectionUI();
       $("emptyState").classList.toggle("hidden",rows.length!==0);
@@ -140,6 +160,8 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     const selected=rows.filter(x=>state.selectedLogs.has(String(x.transaction_id))).length;
     $("selectPage").checked=rows.length>0&&selected===rows.length;
     $("selectPage").indeterminate=selected>0&&selected<rows.length;
+    $("selectPageHeader").indeterminate=$("selectPage").indeterminate;
+    $("selectPageHeader").checked=$("selectPage").checked;
   }
   async function downloadSelected(){
     const ids=Array.from(state.selectedLogs.keys());
@@ -186,17 +208,36 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     }catch(error){showError($("loadError"),error.message)}
   }
   $("authForm").addEventListener("submit",async e=>{e.preventDefault();state.token=$("tokenInput").value.trim();hideError($("authError"));try{await request("/api/diagnostics?limit=1");sessionStorage.setItem("tp_diag_token",state.token);setUnlocked(true);state.offset=0;await load()}catch(error){state.token="";showError($("authError"),error.message)}});
-  $("selectPage").addEventListener("change",()=>{
+  function selectVisibleRows(checked){
     (state.visibleRows||[]).forEach(row=>{
       const id=String(row.transaction_id);
-      if($("selectPage").checked)state.selectedLogs.set(id,row);
+      if(checked)state.selectedLogs.set(id,row);
       else state.selectedLogs.delete(id);
     });
     load();
-  });
+  }
+  $("selectPage").addEventListener("change",()=>selectVisibleRows($("selectPage").checked));
+  $("selectPageHeader").addEventListener("change",()=>selectVisibleRows($("selectPageHeader").checked));
   $("downloadSelectedBtn").addEventListener("click",downloadSelected);
   $("clearSelectionBtn").addEventListener("click",()=>{state.selectedLogs.clear();load()});
   $("applyBtn").addEventListener("click",()=>{state.offset=0;load()});
+  $("refreshNowBtn").addEventListener("click",()=>{state.offset=0;load()});
+  $("filterTab").addEventListener("click",()=>{ $("filterSettings").classList.remove("hidden");$("listSettings").classList.add("hidden");$("filterTab").classList.add("active");$("listTab").classList.remove("active") });
+  $("listTab").addEventListener("click",()=>{ $("listSettings").classList.remove("hidden");$("filterSettings").classList.add("hidden");$("listTab").classList.add("active");$("filterTab").classList.remove("active") });
+  async function saveRetention(deleteBefore){
+    const days=Number($("retentionDays").value);
+    if(deleteBefore&&!confirm("Permanently delete all transaction logs completed before "+deleteBefore+"? This cannot be undone."))return;
+    const buttons=[$("saveRetentionBtn"),$("pruneBtn")];buttons.forEach(b=>b.disabled=true);
+    try{
+      const response=await fetch("/api/diagnostics",{method:"POST",headers:{Authorization:"Bearer "+state.token,"content-type":"application/json"},body:JSON.stringify({action:"update_retention",retention_days:days,delete_before:deleteBefore||null})});
+      const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Unable to save retention settings.");
+      $("retentionStat").textContent=data.retention_days+" days";$("settingsMessage").textContent="Retention saved. "+data.deleted+" older log(s) deleted.";$("settingsMessage").classList.remove("hidden","error");await load();
+    }catch(error){$("settingsMessage").textContent=error.message;$("settingsMessage").classList.remove("hidden");$("settingsMessage").classList.add("error")}
+    finally{buttons.forEach(b=>b.disabled=false)}
+  }
+  $("saveRetentionBtn").addEventListener("click",()=>saveRetention(null));
+  $("pruneBtn").addEventListener("click",()=>{const d=$("deleteBefore").value;if(!d){$("settingsMessage").textContent="Choose a cutoff date first.";$("settingsMessage").classList.remove("hidden");return}saveRetention(d)});
+  fetch("/version.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(v=>{if(v?.version)$("versionLabel").textContent="Version "+v.version}).catch(()=>{});
   $("clearBtn").addEventListener("click",()=>{["searchInput","endpointFilter","outcomeFilter","statusFilter","fromFilter","toFilter"].forEach(id=>$(id).value="");state.offset=0;load()});
   $("refreshBtn").addEventListener("click",()=>{if(state.token)load()});
   $("prevBtn").addEventListener("click",()=>{state.offset=Math.max(0,state.offset-state.limit);load()});
