@@ -1,5 +1,5 @@
 {
-  "version": "1.7.37",
+  "version": "1.7.38",
   "released": "2026-11-23",
-  "releaseName": "Add AI fallback for Gemini capacity failures and accurate streamed error diagnostics"
+  "releaseName": "Add Groq and OpenRouter AI fallback providers"
 }
