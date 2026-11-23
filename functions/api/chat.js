@@ -1,3 +1,4 @@
+import { withTransactionLog } from "../lib/transaction-log.js";
 import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 // TripPlanner AI Assistant — provider-level failover across independently keyed AI services.
 const J=(o,s=200)=>new Response(JSON.stringify(o),{status:s,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
@@ -28,7 +29,7 @@ async function gemini(model,key,input){
  try{while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();frames.forEach(parse)}buffer+=decoder.decode();if(buffer.trim())parse(buffer)}finally{try{reader.releaseLock()}catch{}}
  if(failure)throw new Error(failure);if(!answer.trim())throw new Error("Gemini returned an empty response.");return {answer:answer.trim(),sources:safeSources(steps)};
 }
-export async function onRequestPost({request,env}){
+async function handleChatPost({request,env}){
  try{
   const origin=request.headers.get("origin");if(origin&&origin!==new URL(request.url).origin)return J({error:"Forbidden request."},403);
   let body;try{body=await request.json()}catch{return J({error:"Invalid request."},400)}
@@ -77,3 +78,5 @@ export async function onRequestPost({request,env}){
   return J({error:"All configured AI providers are currently unavailable. "+failures.join(" · ")},503);
  }catch(error){return J({error:"The assistant could not complete your request. Please try again."},500)}
 }
+
+export async function onRequestPost(context){return withTransactionLog(context,"chat",()=>handleChatPost(context));}
