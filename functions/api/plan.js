@@ -1,3 +1,4 @@
+import { withTransactionLog } from "../lib/transaction-log.js";
 import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 import { makeTripCacheKey, readTripReportCache, writeTripReportCache } from "../lib/trip-cache.js";
 // Cloudflare Pages Function: POST /api/plan
@@ -424,7 +425,7 @@ function makeBaseSchedule(areas,dayCount){
  while(schedule.length<dayCount)schedule.push(areas[areas.length-1].name);
  return schedule.slice(0,dayCount);
 }
-export async function onRequestPost({request,env}){
+async function handlePlanPost({request,env}){
  try{
   const origin=request.headers.get("origin");if(origin&&origin!==new URL(request.url).origin)return J({error:"Forbidden request."},403);
   if(!env.GEMINI_API_KEY)return J({error:"Server is not configured: GEMINI_API_KEY is missing."},500);
@@ -686,3 +687,5 @@ export async function onRequestPost({request,env}){
   return new Response(stream,{status:200,headers:{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache, no-store, no-transform","x-accel-buffering":"no"}});
  }catch(err){console.error("Trip Planner request failure:",err?.stack||err);return J({error:"The travel planning service encountered an internal error."},500)}
 }
+
+export async function onRequestPost(context){return withTransactionLog(context,"plan",()=>handlePlanPost(context));}
