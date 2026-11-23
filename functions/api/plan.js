@@ -34,7 +34,9 @@ function normaliseFlightCurrency(options,fromCurrency,toCurrency,rate){
  if(!Array.isArray(options)||!from||!to||from===to||!(fx>0))return {converted:0,from,to,rate:fx||null};
  let converted=0;
  for(const option of options){
-  const declared=String(option.provider_currency||option.currency||from).toUpperCase();
+  const rawCurrency=option.provider_currency||option.currency;
+  if(!rawCurrency)continue;
+  const declared=String(rawCurrency).toUpperCase();
   if(declared!==from)continue;
   for(const key of ["price_estimate","adult_price_per_person","child_price_per_person","infant_price_per_person","provider_total_amount"]){
    const value=Number(option[key]);if(Number.isFinite(value)&&value>0)option[key]=Number((value/fx).toFixed(2));
