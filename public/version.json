@@ -1,5 +1,5 @@
 {
-  "version": "1.7.42",
+  "version": "1.7.43",
   "released": "2026-11-23",
-  "releaseName": "Polish itinerary locator UI and filter unsafe codes"
+  "releaseName": "Simplify trip entry to new search or locator retrieval"
 }
