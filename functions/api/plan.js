@@ -1,6 +1,7 @@
 import { withTransactionLog, traceEvent } from "../lib/transaction-log.js";
 import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 import { makeTripCacheKey, readTripReportCache, writeTripReportCache } from "../lib/trip-cache.js";
+import { searchFlightsForPlan } from "./flights.js";
 // Cloudflare Pages Function: POST /api/plan
 // Parallel travel-research specialists orchestrated by one streamed request.
 // Each specialist returns a bounded JSON object; route -> research -> day planners.
@@ -422,6 +423,24 @@ async function pool(tasks,limit,worker,onFailure){
  });
  await Promise.all(runners);return results;
 }
+async function runLiveFlightResearch(context,trip,emit){
+ traceEvent(context,"flight_research","started",{origin:trip.from,destination:trip.dest,departure:trip.d1,return:trip.d2,provider:"shared flight search engine"});
+ emit({type:"agent_search",agent:"Flight researcher",query:"Live Google Flights provider search: "+trip.from+" to "+trip.dest+" outbound "+trip.d1+" and return "+trip.d2});
+ const result=await searchFlightsForPlan(context,{
+  origin:trip.from,destination:trip.dest,departureDate:trip.d1,returnDate:trip.d2,
+  currency:trip.cur,adults:trip.adults,children:trip.children,infants:trip.infants,
+  cabin:trip.cabin||"Any",stops:trip.stops||"Any"
+ });
+ const options=Array.isArray(result.options)?result.options:[];
+ const outbound=options.filter(x=>String(x.segment||"").toLowerCase()==="outbound");
+ const returning=options.filter(x=>String(x.segment||"").toLowerCase()==="return");
+ if(!outbound.length||!returning.length)throw new Error("Live flight providers did not return usable options for both outbound and return legs.");
+ const sources=sourceUnique(options.filter(x=>x.source_url).map(x=>({title:x.price_source||result.provider||"Google Flights",url:x.source_url})));
+ const queryCount=Math.max(1,Number(result.searchesUsed)||8);
+ const queries=Array.from({length:queryCount},(_,i)=>"Provider search "+(i+1)+": "+trip.from+" to "+trip.dest+" "+trip.d1+"/"+trip.d2);
+ traceEvent(context,"flight_research","success",{provider:result.provider||"SerpApi",options:options.length,outbound:outbound.length,return:returning.length,source_count:sources.length,search_count:queryCount});
+ return {data:{flight_options:options,getting_there:"Live provider-backed Google Flights results via "+(result.provider||"SerpApi")},sources,queries,model:result.provider||"SerpApi",status:"completed"};
+}
 function makeBaseSchedule(areas,dayCount){
  const schedule=[];
  for(const area of areas){for(let i=0;i<nightsOf(area.nights)&&schedule.length<dayCount-1;i++)schedule.push(area.name)}
@@ -447,7 +466,7 @@ async function handlePlanPost(context){
   if(pax>12)return J({error:"The total party size (adults, children and infants) cannot exceed 12."},400);
   const childAges=Array.isArray(b.childAges)?b.childAges.map(x=>Number.parseInt(x,10)).filter(x=>Number.isInteger(x)&&x>=2&&x<=17).slice(0,12):[];
   if(childAges.length&&childAges.length!==children)return J({error:"Enter one age (2–17) for each child, or leave child ages blank."},400);
-  const trip={dest,d1,d2,days:dayCount,pax,adults,children,infants,childAges,bud:clip(b.bud,20)||"Mid-range",cur:clip(b.cur,5)||"INR",from:clip(b.from,60)||"Mumbai",int:clip(b.int,250),includeShopping:b.includeShopping!==false,zeroDaysWasted:b.zeroDaysWasted===true};
+  const trip={dest,d1,d2,days:dayCount,pax,adults,children,infants,childAges,bud:clip(b.bud,20)||"Mid-range",cur:clip(b.cur,5)||"INR",from:clip(b.from,60)||"Mumbai",cabin:clip(b.cabin,30)||"Any",stops:clip(b.stops,20)||"Any",int:clip(b.int,250),includeShopping:b.includeShopping!==false,zeroDaysWasted:b.zeroDaysWasted===true};
   const useSearch=b.useSearch===true;
   const maxBases=Math.min(4,Math.max(1,Math.ceil(Math.max(1,dayCount-1)/2)));
   const cacheInput={trip,useSearch,maxBases};
@@ -488,7 +507,7 @@ async function handlePlanPost(context){
        const label=kind==="day"?"Day planner · "+date:kind==="transport"?"Transport researcher":kind==="flights"?"Flight researcher":kind+" researcher · "+areaName;
        const ctx={trip,useSearch,areas:report.areas||[],area,label,date,dayNumber:(report.days||[]).findIndex(x=>x.date===date)+1,base:(report.days||[]).find(x=>x.date===date)?.base||""};
        traceEvent(context,"retry_agent:"+kind,"started",{area:areaName,date});
-       const result=await runAgent(kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
+       const result=kind==="flights"?await runLiveFlightResearch(context,trip,emit):await runAgent(kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
        traceEvent(context,"retry_agent:"+kind,"success",{model:result.model});
        if(kind==="flights"){const data=result.data;report.flight_options=data.flight_options||[];report.getting_there=data.getting_there||"";const ranked=await rankFlightOptionsWithWorkersAI(report.flight_options,env);report.flight_options=ranked.options;}
        else if(kind==="stay"){if(!area)throw new Error("The requested area was not found in the saved report.");area.hotel_options=result.data.hotel_options||[];}
@@ -511,7 +530,7 @@ async function handlePlanPost(context){
        combined.flight_options=[];
        combined.getting_there="";
        let freshFlight=null,flightFailure=null;
-       try{freshFlight=await runAgent("flights",{trip,useSearch:true,maxBases,nights:dayCount-1,label:"Flight researcher",maxDurationMs:150000},env,emit,retryBudget,modelState,requestBudget,requestGate)}
+       try{freshFlight=await runLiveFlightResearch(context,trip,emit)}
        catch(error){flightFailure=error;combined.research_unavailable=[...(combined.research_unavailable||[]).filter(x=>x.kind!=="flights"),{kind:"flights",label:"Flight researcher",error:error.message||"Temporarily unavailable"}];emit({type:"agent_failed",agent:"Flight researcher",error:error.message||"Live flight research unavailable"});}
        const flightResearch=freshFlight?.data||{};
        if(freshFlight){combined.flight_options=Array.isArray(flightResearch.flight_options)?flightResearch.flight_options:[];combined.getting_there=flightResearch.getting_there||"";combined.research_unavailable=(combined.research_unavailable||[]).filter(x=>x.kind!=="flights");}
@@ -582,7 +601,7 @@ async function handlePlanPost(context){
       const openingRuns=await pool(openingTasks,3,async(task)=>{
        emit({type:"agent_started",agent:task.label,completed:openingCompleted,total:openingTasks.length});
        const ctx={trip,useSearch:task.kind==="flights"?true:useSearch,maxBases,nights:dayCount-1,label:task.label};
-       const result=await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
+       const result=task.kind==="flights"?await runLiveFlightResearch(context,trip,emit):await runAgent(task.kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
        openingCompleted++;
        emit({type:"agent_completed",agent:task.label,completed:openingCompleted,total:openingTasks.length,sourceCount:result.sources.length,searchCount:result.queries.length});
        return {...task,...result};
