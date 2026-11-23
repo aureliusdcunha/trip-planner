@@ -249,23 +249,35 @@ async function rankFlightOptionsWithWorkersAI(options,env){
   return {options:[...ranked,...candidates.filter((_,i)=>!used.has(i)),...options.slice(40)],used:true};
  }catch(error){console.warn("Workers AI flight ranking unavailable; retaining source order:",error?.message||error);return {options,used:false}}
 }
+async function runOpenAICompatibleFallback(provider,kind,ctx,env,label){
+ const key=provider==="Groq"?env.GROQ_API_KEY:env.OPENROUTER_API_KEY;if(!key)return null;
+ const model=provider==="Groq"?"openai/gpt-oss-120b":"openrouter/free";
+ const base=provider==="Groq"?"https://api.groq.com/openai/v1/chat/completions":"https://openrouter.ai/api/v1/chat/completions";
+ const schema=schemas[kind];if(!schema)return null;
+ const task=promptFor(kind,{...ctx,useSearch:false}).replace("GEMINI FLIGHT FARE-RANGE ESTIMATOR","AI FLIGHT FARE-RANGE ESTIMATOR").replace("Gemini reasoning","model reasoning");
+ const messages=[{role:"system",content:"Return only valid JSON matching the requested schema. Never fabricate live availability, flight numbers, exact schedules, current fares or citations. Clearly label estimates and uncertainty. Use destination local currency."},{role:"user",content:"Assignment: "+task+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}];
+ let response;try{response=await fetch(base,{method:"POST",headers:{"authorization":"Bearer "+key,"content-type":"application/json"},body:JSON.stringify({model,messages,temperature:0.2,max_tokens:2400,response_format:{type:"json_object"}}),signal:AbortSignal.timeout(55000)})}catch(e){throw new Error(provider+" connection failed: "+String(e.message||e))}
+ if(!response.ok)throw new Error(provider+" returned HTTP "+response.status+". "+(await response.text().catch(function(){return ""})).slice(0,500));
+ const payload=await response.json();const raw=payload.choices&&payload.choices[0]&&payload.choices[0].message&&payload.choices[0].message.content;
+ const cleaned=String(raw||"").replace(/^\\s*```(?:json)?/i,"").replace(/```\\s*$/,"").trim();if(!cleaned)throw new Error(provider+" returned an empty response.");
+ let data;try{data=JSON.parse(cleaned)}catch(e){throw new Error(provider+" returned invalid JSON.")}
+ const issue=validateAgent(kind,data,{...ctx,useSearch:false});if(issue)throw new Error(provider+" response failed validation: "+issue);
+ return {data:data,sources:[],queries:[],model:provider+" · "+model,status:"completed",fallback:true,grounding:false,provider:provider};
+}
+async function runExternalAIAgentFallback(kind,ctx,env,label){
+ const failures=[];for(const provider of ["Groq","OpenRouter"]){try{const result=await runOpenAICompatibleFallback(provider,kind,ctx,env,label);if(result)return result}catch(error){failures.push(String(error.message||error))}}
+ try{const result=await runWorkersAIAgentFallback(kind,ctx,env,label);if(result)return result}catch(error){failures.push(String(error.message||error))}
+ throw new Error(label+": Groq, OpenRouter and Workers AI fallbacks unavailable. "+failures.join(" | "));
+}
 async function runWorkersAIAgentFallback(kind,ctx,env,label){
- const schema=schemas[kind];
- if(!schema)return null;
- const messages=[
-  {role:"system",content:"You are a careful travel research assistant. Return only valid JSON matching the supplied JSON schema. Never fabricate live availability, flight numbers, exact schedules, current fares or citations. Use sensible indicative planning estimates where appropriate and clearly label uncertainty in the provided fields. All numeric costs must be in destination local currency."},
-  {role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false}).replace("GEMINI FLIGHT FARE-RANGE ESTIMATOR","AI FLIGHT FARE-RANGE ESTIMATOR").replace("Gemini reasoning","model reasoning")+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}
- ];
- const guarded=await runWorkersAIWithQuota(env,"@cf/zai-org/glm-4.7-flash",messages,{messages,max_completion_tokens:kind==="guide"?2400:kind==="attractions"||kind==="day"?2800:1800,chat_template_kwargs:{enable_thinking:false}},kind==="guide"?2400:kind==="attractions"||kind==="day"?2800:1800);
- if(!guarded.allowed)throw new Error(label+": Gemini models are unavailable and Workers AI fallback is unavailable ("+String(guarded.reason||"quota or binding unavailable")+").");
- const result=guarded.result;
- const raw=typeof result?.response==="string"?result.response:typeof result?.result==="string"?result.result:Array.isArray(result?.choices)?result.choices[0]?.message?.content:result?.output_text;
- const cleaned=String(raw||"").replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,"").trim();
- if(!cleaned)throw new Error(label+": Workers AI fallback returned an empty response.");
- let data;try{data=JSON.parse(cleaned)}catch{throw new Error(label+": Workers AI fallback returned invalid JSON.");}
- const issue=validateAgent(kind,data,{...ctx,useSearch:false});
- if(issue)throw new Error(label+": Workers AI fallback response failed validation: "+issue);
- return {data,sources:[],queries:[],model:"Workers AI · GLM-4.7-Flash fallback",status:"completed",fallback:true,quota:guarded.quota};
+ const schema=schemas[kind];if(!schema)return null;
+ const messages=[{role:"system",content:"Return only valid JSON matching the supplied schema. Never fabricate live availability, flight numbers, exact schedules, current fares or citations. Clearly label uncertainty. Use destination local currency."},{role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false}).replace("GEMINI FLIGHT FARE-RANGE ESTIMATOR","AI FLIGHT FARE-RANGE ESTIMATOR").replace("Gemini reasoning","model reasoning")+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}];
+ const limit=kind==="guide"?2400:(kind==="attractions"||kind==="day"?2800:1800);const guarded=await runWorkersAIWithQuota(env,"@cf/zai-org/glm-4.7-flash",messages,{messages,max_completion_tokens:limit,chat_template_kwargs:{enable_thinking:false}},limit);
+ if(!guarded.allowed)throw new Error(label+": Workers AI fallback unavailable ("+String(guarded.reason||"quota or binding unavailable")+")");
+ const result=guarded.result;const raw=result.response||result.result||(result.choices&&result.choices[0]&&result.choices[0].message&&result.choices[0].message.content)||result.output_text;
+ const cleaned=String(raw||"").replace(/^\\s*```(?:json)?/i,"").replace(/```\\s*$/,"").trim();let data;try{data=JSON.parse(cleaned)}catch(e){throw new Error(label+": Workers AI returned invalid JSON.")}
+ const issue=validateAgent(kind,data,{...ctx,useSearch:false});if(issue)throw new Error(label+": Workers AI response failed validation: "+issue);
+ return {data:data,sources:[],queries:[],model:"Workers AI · GLM-4.7-Flash fallback",status:"completed",fallback:true,grounding:false,quota:guarded.quota};
 }
 async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,requestGate){
  const label=ctx.label||kind,sources=[],queries=[];
@@ -276,7 +288,7 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
  let lastModel="",capacityRetriesForModel=0;
  for(let attempt=0;attempt<20;attempt++){
   while(agentModelState.index<agentModelState.models.length&&agentModelState.health?.disabled?.has(agentModelState.models[agentModelState.index]))agentModelState.index++;
-  if(agentModelState.index>=agentModelState.models.length){const fallback=await runWorkersAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models have been temporarily paused after rate-limit or overload responses from other researchers.");}
+  if(agentModelState.index>=agentModelState.models.length){const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured Gemini models have been temporarily paused after rate-limit or overload responses from other researchers.");}
   if(Date.now()>=agentDeadline)throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");
   await acquireRequestSlot(requestGate);
   if(Date.now()>=agentDeadline){releaseRequestSlot(requestGate);throw new Error(label+": skipped after reaching its time limit; other saved/researched trip details are retained.");}
@@ -311,10 +323,10 @@ async function runAgent(kind,ctx,env,send,retryBudget,modelState,requestBudget,r
      send({type:"model_fallback",agent:label,from:model,to:next,freeTier:agentModelState.freeTier,searchDisabled:!!(agentModelState.freeTier&&ctx.useSearch),message:"The current AI model took too long to respond. Switching to "+next+" so this research can continue."});
      continue;
     }
-    throw new Error(label+": all configured AI models timed out after 110 seconds per attempt.");
+    const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": all configured AI models timed out and external fallbacks failed.");
    }
    if(attempt<11&&retryBudget.remaining>0){retryBudget.remaining--;send({type:"agent_retry",agent:label,message:"Connection interrupted; retrying once."});continue}
-   throw new Error(label+": Could not connect to Gemini Interactions API.");
+   const fallback=await runExternalAIAgentFallback(kind,ctx,env,label);if(fallback)return fallback;throw new Error(label+": Could not connect to Gemini or fallback providers.");
   }
   if(response.status===429){
    let details="";try{details=(await response.text()).slice(0,700)}catch{}
