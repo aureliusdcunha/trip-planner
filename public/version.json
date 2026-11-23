@@ -1,5 +1,5 @@
 {
-  "version": "1.7.30",
+  "version": "1.7.31",
   "released": "2026-11-23",
-  "releaseName": "Improve diagnostics log payload readability"
+  "releaseName": "Diagnostics timeline status filters and compact event details"
 }
