@@ -350,12 +350,13 @@ function renderContent(){
    const wrap=el('label','live-flight-field',label),field=el('input');field.type='text';field.id=id;field.value=value;field.placeholder='City or airport';field.autocomplete='off';
    const list=el('datalist');list.id=id+'-places';field.setAttribute('list',list.id);wrap.append(field,list);return {wrap,field,list};
   };
-  const savedOrigin=trip.from||'Mumbai';
-  const savedDestination=trip.areas?.[0]?.name||(trip.dest||'').split(/[,:;]/)[0]||'';
+  const savedTrip=trip.request_context?.trip||trip;
+  const savedOrigin=savedTrip.from||trip.from||'Mumbai';
+  const savedDestination=trip.areas?.[0]?.name||savedTrip.dest||(trip.dest||'').split(/[,:;]/)[0]||'';
   const originField=makePlace('From',trip.flightSearch?.originText||savedOrigin,'live-flight-origin');
   const destinationField=makePlace('To',trip.flightSearch?.destinationText||savedDestination,'live-flight-destination');
-  const dateField=(label,value)=>{const wrap=el('label','live-flight-field',label),field=el('input');field.type='date';field.value=value;wrap.append(field);return {wrap,field}};
-  const departField=dateField('Departure',trip.d1),returnField=dateField('Return',trip.d2);
+  const dateField=(label,value)=>{const wrap=el('label','live-flight-field',label),field=el('input');field.type='date';field.value=value||'';wrap.append(field);return {wrap,field}};
+  const departField=dateField('Departure',savedTrip.d1||trip.d1),returnField=dateField('Return',savedTrip.d2||trip.d2);
   const lookup=(field,list)=>{let timer;field.addEventListener('input',()=>{clearTimeout(timer);const q=field.value.trim();if(q.length<3)return;timer=setTimeout(async()=>{try{const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'places',query:q})});const data=await r.json();list.replaceChildren(...(data.places||[]).map(place=>{const option=el('option');option.value=place.label;return option}))}catch{}},600)})};
   lookup(originField.field,originField.list);lookup(destinationField.field,destinationField.list);
   const searchButton=el('button','btn','Search using saved trip details');searchButton.type='button';
@@ -392,7 +393,7 @@ function renderContent(){
    searchButton.disabled=true;liveStatus.textContent='Resolving airports and searching Google Flights across all four cabin classes and both directions…';
    trip.flightSearch={originText:fromValue,destinationText:toValue};
    try{
-    const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromValue,destination:toValue,departureDate:departField.field.value,returnDate:returnField.field.value,currency:local,adults:trip.adults||1,children:trip.children||0,infants:trip.infants||0,cabin:trip.requestedCabin||'Any',stops:trip.requestedStops||'Any'})});
+    const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromValue,destination:toValue,departureDate:departField.field.value,returnDate:returnField.field.value,currency:savedTrip.cur||local,adults:savedTrip.adults||1,children:savedTrip.children||0,infants:savedTrip.infants||0,cabin:savedTrip.cabin||'Any',stops:savedTrip.stops||'Any'})});
     const data=await r.json();
     if(!r.ok){
      if(data.code==='QUOTA_EXCEEDED'||r.status===429){
