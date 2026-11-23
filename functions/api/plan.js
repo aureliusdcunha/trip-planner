@@ -425,12 +425,13 @@ function makeBaseSchedule(areas,dayCount){
  while(schedule.length<dayCount)schedule.push(areas[areas.length-1].name);
  return schedule.slice(0,dayCount);
 }
-async function handlePlanPost({request,env}){
+async function handlePlanPost(context){
+ const {request,env}=context;
  try{
   const origin=request.headers.get("origin");if(origin&&origin!==new URL(request.url).origin)return J({error:"Forbidden request."},403);
   if(!env.GEMINI_API_KEY)return J({error:"Server is not configured: GEMINI_API_KEY is missing."},500);
   let b;try{b=await request.json()}catch{return J({error:"Invalid request body."},400)}
-  traceEvent(arguments[0],"request_parsed","success",{destination:clip(b.dest,120),force_refresh:b.forceRefresh===true,retry_only:!!b.retryOnly});
+  traceEvent(context,"request_parsed","success",{destination:clip(b.dest,120),force_refresh:b.forceRefresh===true,retry_only:!!b.retryOnly});
   const dest=clip(b.dest,120),d1=clip(b.d1,10),d2=clip(b.d2,10);
   if(!dest||!validDate(d1)||!validDate(d2))return J({error:"Enter a destination and valid travel dates."},400);
   const dayCount=Math.round((Date.parse(d2+"T00:00:00Z")-Date.parse(d1+"T00:00:00Z"))/864e5)+1;
@@ -449,9 +450,9 @@ async function handlePlanPost({request,env}){
   const cacheInput={trip,useSearch,maxBases};
   const cacheKey=await makeTripCacheKey(cacheInput);
   const forceRefresh=b.forceRefresh===true;
-  traceEvent(arguments[0],"cache_lookup","started",{force_refresh:forceRefresh});
+  traceEvent(context,"cache_lookup","started",{force_refresh:forceRefresh});
   const cachedTrip=forceRefresh?null:await readTripReportCache(env,cacheKey);
-  traceEvent(arguments[0],"cache_lookup",cachedTrip?"success":"info",{hit:!!cachedTrip});
+  traceEvent(context,"cache_lookup",cachedTrip?"success":"info",{hit:!!cachedTrip});
   const heartbeat=new TextEncoder();
   let cancelled=false,heartbeatTimer=null,deadlineTimer=null;
   const stream=new ReadableStream({
@@ -465,7 +466,7 @@ async function handlePlanPost({request,env}){
     (async()=>{
      try{
       // 21-day / four-base plans use at most 37 agents. The shared request budget caps model rotations and retries at 49 calls; the gate allows at most two in-flight calls.
-      traceEvent(arguments[0],"model_configuration","success",{provider:"Gemini",model:clip(env.MODEL||"gemini-3.8-flash",80)});
+      traceEvent(context,"model_configuration","success",{provider:"Gemini",model:clip(env.MODEL||"gemini-3.8-flash",80)});
       const primaryModel=clip(env.MODEL||"gemini-3.8-flash",80);
       const configuredFallback=clip(env.FALLBACK_MODEL||"gemini-3.5-flash-lite",80);
       const tertiaryModel=clip(env.TERTIARY_MODEL||"gemini-3.1-flash-lite",80);
@@ -483,9 +484,9 @@ async function handlePlanPost({request,env}){
        const area=report.areas?.find(x=>x.name===areaName);
        const label=kind==="day"?"Day planner · "+date:kind==="transport"?"Transport researcher":kind==="flights"?"Flight researcher":kind+" researcher · "+areaName;
        const ctx={trip,useSearch,areas:report.areas||[],area,label,date,dayNumber:(report.days||[]).findIndex(x=>x.date===date)+1,base:(report.days||[]).find(x=>x.date===date)?.base||""};
-       traceEvent(arguments[0],"retry_agent:"+kind,"started",{area:areaName,date});
+       traceEvent(context,"retry_agent:"+kind,"started",{area:areaName,date});
        const result=await runAgent(kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
-       traceEvent(arguments[0],"retry_agent:"+kind,"success",{model:result.model});
+       traceEvent(context,"retry_agent:"+kind,"success",{model:result.model});
        if(kind==="flights"){const data=result.data;report.flight_options=data.flight_options||[];report.getting_there=data.getting_there||"";const ranked=await rankFlightOptionsWithWorkersAI(report.flight_options,env);report.flight_options=ranked.options;}
        else if(kind==="stay"){if(!area)throw new Error("The requested area was not found in the saved report.");area.hotel_options=result.data.hotel_options||[];}
        else if(kind==="attractions"){report.highlights=(report.highlights||[]).filter(x=>String(x.area||"")!==areaName).concat(result.data.highlights||[]);}
@@ -680,7 +681,7 @@ async function handlePlanPost({request,env}){
       combined.cache={hit:false,saved:cacheSaved,flightsRefreshed:true,refreshed:forceRefresh};
       emit({type:"result",data:combined,cacheHit:false,cacheSaved});
      }catch(err){
-      traceEvent(arguments[0],"agent_orchestration","error",{message:err?.message,stack:String(err?.stack||"").slice(0,3000)});
+      traceEvent(context,"agent_orchestration","error",{message:err?.message,stack:String(err?.stack||"").slice(0,3000)});
       console.error("Trip Planner agent orchestration failed:",err?.stack||err);
       emit({type:"error",error:err?.message||"One or more travel researchers could not complete the plan."});
      }finally{
