@@ -1,5 +1,5 @@
 {
-  "version": "1.7.47",
+  "version": "1.7.48",
   "released": "2026-11-23",
-  "releaseName": "Improve raw diagnostics timing readability"
+  "releaseName": "Diagnostics visual refresh and cache retention overview"
 }
