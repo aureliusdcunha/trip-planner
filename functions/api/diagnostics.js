@@ -4,6 +4,7 @@ const JSON_HEADERS = {
   "x-content-type-options": "nosniff"
 };
 
+const SETTINGS_TABLE = `CREATE TABLE IF NOT EXISTS app_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_at TEXT NOT NULL)`;
 const TABLE = `CREATE TABLE IF NOT EXISTS transaction_logs (
  transaction_id TEXT PRIMARY KEY,
  endpoint TEXT NOT NULL,
@@ -38,6 +39,7 @@ export async function onRequestGet({ request, env }) {
 
   try {
     await db.prepare(TABLE).run();
+    await db.prepare(SETTINGS_TABLE).run();
     const url = new URL(request.url);
     const id = (url.searchParams.get("id") || "").trim();
 
@@ -86,6 +88,8 @@ export async function onRequestGet({ request, env }) {
       const term = "%" + search + "%";
       values.push(term, term, term, term);
     }
+    const policyRow = await db.prepare("SELECT setting_value FROM app_settings WHERE setting_key = ?").bind("flight_cache_hours").first();
+    const flightCacheHours = Math.min(720, Math.max(1, Number(policyRow?.setting_value) || 48));
     const where = clauses.length ? " WHERE " + clauses.join(" AND ") : "";
     const countRow = await db.prepare("SELECT COUNT(*) AS total FROM transaction_logs" + where).bind(...values).first();
     const rows = await db.prepare(
@@ -98,6 +102,7 @@ export async function onRequestGet({ request, env }) {
       total: Number(countRow?.total || 0),
       limit,
       offset,
+      policies: { flight_cache_hours: flightCacheHours, saved_itineraries_expiry: "none" },
     });
   } catch (error) {
     console.error("Diagnostics query failed:", error?.stack || error);
@@ -115,6 +120,13 @@ export async function onRequestPost({ request, env }) {
  try{
   await db.prepare(TABLE).run();
   const body=await request.json();
+  await db.prepare(SETTINGS_TABLE).run();
+  if(body.action==="save_cache_policy"){
+   const hours=Number(body.flight_cache_hours);
+   if(!Number.isInteger(hours)||hours<1||hours>720)return json({error:"Flight cache duration must be between 1 and 720 hours."},400);
+   await db.prepare("INSERT INTO app_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at").bind("flight_cache_hours",String(hours),new Date().toISOString()).run();
+   return json({success:true,flight_cache_hours:hours});
+  }
   if(body.action!=="apply_retention")return json({error:"Unsupported diagnostics action."},400);
   const days=Number(body.retention_days);
   if(!Number.isInteger(days)||days<1||days>365)return json({error:"Retention must be between 1 and 365 days."},400);
