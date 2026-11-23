@@ -23,7 +23,7 @@ input,select{min-width:0;height:39px;border:1px solid var(--line);border-radius:
 .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:860px} .select-cell{width:38px;text-align:center!important} .select-cell input{width:16px;height:16px;accent-color:var(--red);cursor:pointer;vertical-align:middle} .bulk-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 12px}.bulk-actions .muted{font-size:12px} .bulk-actions .btn{white-space:nowrap}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid #d8dadd;font-size:12px;white-space:nowrap}th{color:#333;font-size:11px;text-transform:none;letter-spacing:0;background:#fff;position:sticky;top:0;font-weight:750}
 tbody tr{cursor:pointer}tbody tr:nth-child(even){background:#f7f7f7}tbody tr:hover{background:#eaf3ed}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}.pill{display:inline-block;border-radius:99px;padding:3px 8px;font-size:10px;font-weight:800;background:#edf5ef;color:var(--green)}.pill.bad{background:#fff0ef;color:#b3261e}.pill.warn{background:#fff5df;color:var(--amber)}
 .pager{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-top:13px}.empty{text-align:center;padding:35px;color:var(--muted)}
-.detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0}.detail-item{background:#fffaf2;border:1px solid var(--line);border-radius:9px;padding:9px}.detail-item small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.detail-item b{overflow-wrap:anywhere}
+.detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.timing-panel{margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fbfcfd}.timing-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}.timing-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}.timing-stat{padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}.timing-stat small{display:block;color:var(--muted);font-size:11px}.timing-stat b{display:block;font-size:17px;margin-top:3px}.timing-raw{margin-top:10px}.timing-raw pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f4f6;padding:10px;border-radius:8px;font-size:11px}.detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0}.detail-item{background:#fffaf2;border:1px solid var(--line);border-radius:9px;padding:9px}.detail-item small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.detail-item b{overflow-wrap:anywhere}
 pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;overflow:auto;max-height:65vh;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .hidden{display:none!important}.foot{font-size:11px;color:var(--muted);margin-top:18px}
 @media(max-width:950px){.filters{grid-template-columns:repeat(3,minmax(0,1fr))}.retention-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -88,7 +88,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
 
     <section id="detailPanel" class="panel hidden">
       <div class="detail-head"><div><h1 style="font-size:23px">Transaction details</h1><div class="muted mono" id="detailId"></div></div><div class="filter-actions"><button class="btn secondary" id="copyBtn" type="button">Copy JSON</button><button class="btn secondary" id="downloadBtn" type="button">Download JSON</button><button class="btn secondary" id="closeDetailBtn" type="button">Close</button></div></div>
-      <div class="detail-grid" id="detailMeta"></div>
+      <div class="detail-grid" id="detailMeta"></div><section class="timing-panel" id="timingPanel" aria-label="Execution timing"></section>
       <h3 style="margin:12px 0 8px">Execution timeline</h3><div id="traceFilters" class="trace-filters"></div><div id="traceTimeline" class="trace-timeline"></div><details class="record-details"><summary>Complete transaction record (JSON)</summary><pre id="detailJson"></pre></details>
     </section>
   </section>
@@ -196,9 +196,24 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
       const log=data.log||{};
       $("detailId").textContent=log.transaction_id||id;
       $("detailMeta").innerHTML=[
-        ["Endpoint",log.endpoint],["HTTP status",log.http_status],["Outcome",log.outcome],["Duration",formatDuration(log.duration_ms)],["Duration (seconds)",Number(log.duration_seconds??(Number(log.duration_ms||0)/1000)).toFixed(2)+" s"],["Timing details",log.timing?JSON.stringify(log.timing):"Not available"],
+        ["Endpoint",log.endpoint],["HTTP status",log.http_status],["Outcome",log.outcome],["Duration",formatDuration(log.duration_ms)],
         ["Started",dateText(log.started_at)],["Completed",dateText(log.completed_at)]
       ].map(([k,v])=>'<div class="detail-item"><small>'+esc(k)+'</small><b>'+esc(v??"—")+'</b></div>').join("");
+      const timing=log.timing||{};
+      const timingDuration=Number(timing.total_duration_ms??log.duration_ms??0);
+      const timingSeconds=Number(timing.total_duration_seconds??(timingDuration/1000));
+      const firstEvent=dateText(timing.first_event_at||log.started_at);
+      const lastElapsed=Number(timing.last_event_elapsed_ms);
+      const timingPanel=$("timingPanel");
+      timingPanel.innerHTML='<div class="timing-head"><h3 style="margin:0">Execution timing</h3><span class="muted">Readable performance summary</span></div><div class="timing-stats">'+[
+       ["Total duration",formatDuration(timingDuration)],
+       ["In seconds",timingSeconds.toFixed(2)+" s"],
+       ["Trace events",Number(timing.trace_event_count??(log.trace_events||[]).length)],
+       ["Dropped events",Number(timing.trace_events_dropped??0)],
+       ["First event",firstEvent],
+       ["Last event","+"+(Number.isFinite(lastElapsed)?formatDuration(lastElapsed):"—")+" from start"]
+      ].map(([label,value])=>'<div class="timing-stat"><small>'+esc(label)+'</small><b>'+esc(value)+'</b></div>').join("")+'</div><details class="timing-raw"><summary>View raw timing data</summary><pre>'+esc(JSON.stringify(timing,null,2)||"No timing metadata available")+'</pre></details>';
+      if(!log.timing)timingPanel.innerHTML='<div class="timing-head"><h3 style="margin:0">Execution timing</h3><span class="muted">Timing metadata unavailable</span></div>';
       const events=Array.isArray(log.trace_events)?log.trace_events:[];
       const eventStatus=ev=>String(ev.status??"").trim().toLowerCase()||"none";
       const counts=events.reduce((a,ev)=>{const k=eventStatus(ev);a[k]=(a[k]||0)+1;return a},{});
