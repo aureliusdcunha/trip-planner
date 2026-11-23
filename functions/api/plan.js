@@ -730,6 +730,12 @@ async function handlePlanPost(context){
       combined.research_sources=sourceUnique(allResearch.flatMap(x=>x.sources||[])).map(s=>({...s,agent:allResearch.find(x=>(x.sources||[]).some(a=>a.url===s.url))?.label||"Researcher"}));
       const modelsUsed=Array.from(new Set([route.model,...specialistResults.map(x=>x.model),...dayResults.map(x=>x.model)].filter(Boolean)));
       combined.research={search_requested:useSearch,search_enabled:useSearch&&!(modelState.freeTier&&modelState.switched),search_disabled_for_free_tier_fallback:modelState.freeTier&&modelState.switched&&useSearch,primary_model:modelState.primary,fallback_models:modelState.models.slice(1),model_fallback_used:modelState.switched,model_used:modelsUsed.length===1?modelsUsed[0]:modelsUsed.join(", "),models_used:modelsUsed,agents_completed:specialistResults.length+dayResults.length+1,web_sources:combined.research_sources.length,search_queries:allResearch.reduce((sum,x)=>sum+x.queries.length,0)};
+      combined.research.flight_search_requested=true;
+      combined.research.flight_search_executed=!!flightRun?.ok;
+      combined.research.flight_search_status=flightRun?.ok&&combined.flight_options.length?"completed":"unavailable";
+      combined.research.flight_search_provider=flightResearch?.flight_options?.length?(flightResearch.flight_options[0].price_source||"Google Flights provider"):"";
+      combined.research.flight_verified_result_count=combined.flight_options.length;
+      if(!flightRun?.ok)combined.research.flight_failure_reason=flightRun?.error||"Live flight provider search failed.";
       const required=["flight_options","internal_transport","areas","highlights","dining","days","tips","caveats","shopping_guide"];
       if(required.some(k=>!Array.isArray(combined[k]))||combined.days.length!==dayCount||!combined.budget||!combined.practical)throw new Error("The completed itinerary failed final completeness checks.");
       combined.research_unavailable=unavailable;
@@ -745,7 +751,7 @@ async function handlePlanPost(context){
       cacheReport.getting_there="";
       cacheReport.research_sources=(cacheReport.research_sources||[]).filter(x=>x.agent!=="Flight researcher");
       const cacheSaved=await writeTripReportCache(env,cacheKey,cacheInput,cacheReport);
-      combined.cache={hit:false,saved:cacheSaved,flightsRefreshed:true,refreshed:forceRefresh};
+      combined.cache={hit:false,saved:cacheSaved,flightsRefreshed:!!flightRun?.ok&&combined.flight_options.length>0,refreshed:forceRefresh};
       emit({type:"result",data:combined,cacheHit:false,cacheSaved});
      }catch(err){
       traceEvent(context,"agent_orchestration","error",{message:err?.message,stack:String(err?.stack||"").slice(0,3000)});
