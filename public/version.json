@@ -1,5 +1,5 @@
 {
-  "version": "1.7.22",
+  "version": "1.7.23",
   "released": "2026-11-23",
-  "releaseName": "Browser-local diagnostics retention controls"
+  "releaseName": "Responsive navigation and automatic live flight refresh"
 }
