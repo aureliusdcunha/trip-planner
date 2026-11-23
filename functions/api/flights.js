@@ -1,4 +1,4 @@
-import { withTransactionLog } from "../lib/transaction-log.js";
+import { withTransactionLog, traceEvent } from "../lib/transaction-log.js";
 import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 // Cloudflare Pages Function: POST /api/flights
 // Indicative flight-price search via Google Flights results through SerpApi.
@@ -140,6 +140,7 @@ async function handleFlightsPost({request,env}){
   const origin=request.headers.get("origin");
   if(origin&&origin!==new URL(request.url).origin)return json({error:"Forbidden request."},403);
   let b;try{b=await request.json()}catch{return json({error:"Invalid request body."},400)}
+  traceEvent(arguments[0],"request_parsed","success",{action:clip(b.action,20)});
   const key=env.SERPAPI_API_KEY||env.SERP_API_KEY;
   const rapidKey=env.RAPIDAPI_KEY;
   const perceptKey=env.PERCEPTLAYER_API_KEY;
@@ -168,12 +169,14 @@ async function handleFlightsPost({request,env}){
    return json({places:places.slice(0,12)});
   }
   if(action!=="search")return json({error:"Unsupported flight action."},400);
+  traceEvent(arguments[0],"flight_search_validation","success",{origin_supplied:!!b.origin,destination_supplied:!!b.destination});
   if(!b.origin||!b.destination)return json({error:"Origin and destination are required."},400);
   if(!dateOk(b.departureDate)||!dateOk(b.returnDate)||b.returnDate<b.departureDate)return json({error:"Enter valid outbound and return dates."},400);
   const currency=clip(b.currency,3).toUpperCase()||"INR";
   let from,to;
-  try{const resolve=async value=>{if(key){try{const r=await resolveAirport(value,key);return typeof r==="string"?r:r.id}catch{}}return resolveFallbackAirport(value,rapidKey,perceptKey)};const resolved=await Promise.all([resolve(b.origin),resolve(b.destination)]);from=resolved[0];to=resolved[1];}
-  catch(error){return json({error:error.message||"Could not resolve the departure and destination airports."},422)}
+  traceEvent(arguments[0],"airport_resolution","started",{origin:b.origin,destination:b.destination});
+  try{const resolve=async value=>{if(key){try{const r=await resolveAirport(value,key);return typeof r==="string"?r:r.id}catch{}}return resolveFallbackAirport(value,rapidKey,perceptKey)};const resolved=await Promise.all([resolve(b.origin),resolve(b.destination)]);from=resolved[0];to=resolved[1];traceEvent(arguments[0],"airport_resolution","success",{origin_iata:from,destination_iata:to});}
+  catch(error){traceEvent(arguments[0],"airport_resolution","error",{message:error?.message});return json({error:error.message||"Could not resolve the departure and destination airports."},422)}
   if(from===to)return json({error:"Origin and destination resolve to the same airport."},400);
   if(!/^[A-Z]{3}$/.test(currency))return json({error:"Choose a valid trip currency."},400);
   const legs=[{segment:"outbound",from,to,date:b.departureDate},{segment:"return",from:to,to:from,date:b.returnDate}];
@@ -192,15 +195,18 @@ async function handleFlightsPost({request,env}){
     return mapped;
    })());
   }
+  traceEvent(arguments[0],"serpapi_search","started",{provider:"SerpApi",parallel_searches:jobs.length});
   const settled=await Promise.allSettled(jobs),options=[],errors=[];
   for(const result of settled){
    if(result.status==="fulfilled")options.push(...result.value);
    else errors.push(String(result.reason?.message||result.reason));
   }
+  traceEvent(arguments[0],"serpapi_search",errors.length?"warning":"success",{fulfilled:jobs.length-errors.length,rejected:errors.length,options:options.length,errors:errors.slice(0,4)});
   if(settled.some(result=>result.status==="rejected"&&result.reason?.quotaExceeded)||errors.some(message=>quotaExceeded(message))){
+   traceEvent(arguments[0],"provider_fallback","warning",{reason:"SerpApi quota/rate limit",rapidapi_configured:!!rapidKey,perceptlayer_configured:!!perceptKey});
    const providerErrors=["SerpApi quota or rate limit exhausted."];
-   if(rapidKey){try{const rows=await runRapidFallback(rapidKey,from,to,b,currency);const ranked=await rankFlightOptionsWithWorkersAI(sortFallback(rows),env);return json({source:"Google Flights via DataCrawler / RapidAPI",provider:"DataCrawler",searchedAt:new Date().toISOString(),origin:from,destination:to,currency,options:ranked.options,ranking:"workers_ai",ranking_used:ranked.used,searchesUsed:8,partial:false,errors:[],notice:"Fallback live fares via DataCrawler / RapidAPI. Prices can change. No booking or payment is performed."})}catch(e){providerErrors.push("DataCrawler: "+(e.message||"unavailable"))}}else providerErrors.push("RAPIDAPI_KEY not configured.");
-   if(perceptKey){try{const rows=await runPerceptFallback(perceptKey,from,to,b,currency);const ranked=await rankFlightOptionsWithWorkersAI(sortFallback(rows),env);return json({source:"Google Flights via Perceptlayer",provider:"Perceptlayer",searchedAt:new Date().toISOString(),origin:from,destination:to,currency,options:ranked.options,ranking:"workers_ai",ranking_used:ranked.used,searchesUsed:8,partial:false,errors:[],notice:"Fallback live fares via Perceptlayer. Prices can change. No booking or payment is performed."})}catch(e){providerErrors.push("Perceptlayer: "+(e.message||"unavailable"))}}else providerErrors.push("PERCEPTLAYER_API_KEY not configured.");
+   if(rapidKey){try{traceEvent(arguments[0],"rapidapi_fallback","started");const rows=await runRapidFallback(rapidKey,from,to,b,currency);traceEvent(arguments[0],"rapidapi_fallback","success",{options:rows.length});const ranked=await rankFlightOptionsWithWorkersAI(sortFallback(rows),env);traceEvent(arguments[0],"flight_ranking",ranked.used?"success":"warning",{provider:"Workers AI",used:ranked.used,options:ranked.options.length});return json({source:"Google Flights via DataCrawler / RapidAPI",provider:"DataCrawler",searchedAt:new Date().toISOString(),origin:from,destination:to,currency,options:ranked.options,ranking:"workers_ai",ranking_used:ranked.used,searchesUsed:8,partial:false,errors:[],notice:"Fallback live fares via DataCrawler / RapidAPI. Prices can change. No booking or payment is performed."})}catch(e){traceEvent(arguments[0],"rapidapi_fallback","error",{message:e?.message});providerErrors.push("DataCrawler: "+(e.message||"unavailable"))}}else providerErrors.push("RAPIDAPI_KEY not configured.");
+   if(perceptKey){try{traceEvent(arguments[0],"perceptlayer_fallback","started");const rows=await runPerceptFallback(perceptKey,from,to,b,currency);traceEvent(arguments[0],"perceptlayer_fallback","success",{options:rows.length});const ranked=await rankFlightOptionsWithWorkersAI(sortFallback(rows),env);traceEvent(arguments[0],"flight_ranking",ranked.used?"success":"warning",{provider:"Workers AI",used:ranked.used,options:ranked.options.length});return json({source:"Google Flights via Perceptlayer",provider:"Perceptlayer",searchedAt:new Date().toISOString(),origin:from,destination:to,currency,options:ranked.options,ranking:"workers_ai",ranking_used:ranked.used,searchesUsed:8,partial:false,errors:[],notice:"Fallback live fares via Perceptlayer. Prices can change. No booking or payment is performed."})}catch(e){traceEvent(arguments[0],"perceptlayer_fallback","error",{message:e?.message});providerErrors.push("Perceptlayer: "+(e.message||"unavailable"))}}else providerErrors.push("PERCEPTLAYER_API_KEY not configured.");
    return json({code:"ALL_PROVIDERS_EXHAUSTED",error:"All live flight providers are unavailable or out of quota. Use the original AI-generated flight estimates.",providerErrors},429);
   }
   if(!options.length)return json({error:errors[0]||"Google Flights did not return fares for this route and date. Try another date."},502);
@@ -212,7 +218,10 @@ async function handleFlightsPost({request,env}){
    if(seen.has(signature))continue;seen.add(signature);unique.push(option);
   }
   unique.sort((a,b)=>a.price_estimate-b.price_estimate);
+  traceEvent(arguments[0],"flight_deduplication","success",{before:options.length,after:unique.length});
+  traceEvent(arguments[0],"flight_ranking","started",{provider:"Workers AI",options:unique.length});
   const ranked=await rankFlightOptionsWithWorkersAI(unique,env);
+  traceEvent(arguments[0],"flight_ranking",ranked.used?"success":"warning",{provider:"Workers AI",used:ranked.used,options:ranked.options.length});
   return json({
    source:"Google Flights via SerpApi",searchedAt:new Date().toISOString(),origin:from,destination:to,currency,
    options:ranked.options.slice(0,160),ranking:"workers_ai",ranking_used:ranked.used,searchesUsed:8,partial:errors.length>0,errors:errors.slice(0,2),
