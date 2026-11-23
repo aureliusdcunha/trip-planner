@@ -407,7 +407,7 @@ function renderContent(){
    searchButton.disabled=true;liveStatus.textContent='Resolving airports and searching Google Flights across all four cabin classes and both directions…';
    trip.flightSearch={originText:fromValue,destinationText:toValue};
    try{
-    const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromValue,destination:toValue,departureDate:departField.field.value,returnDate:returnField.field.value,currency:local,adults:savedTrip.adults||1,children:savedTrip.children||0,infants:savedTrip.infants||0,cabin:savedTrip.cabin||'Any',stops:savedTrip.stops||'Any'})});
+    const r=await fetch('/api/flights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'search',origin:fromValue,destination:toValue,departureDate:departField.field.value,returnDate:returnField.field.value,currency:local,homeCurrency:trip.budget?.home_currency||$('cur').value||'INR',adults:savedTrip.adults||1,children:savedTrip.children||0,infants:savedTrip.infants||0,cabin:savedTrip.cabin||'Any',stops:savedTrip.stops||'Any'})});
     const data=await r.json();
     if(!r.ok){
      if(data.code==='QUOTA_EXCEEDED'||r.status===429){
