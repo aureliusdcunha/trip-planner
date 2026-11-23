@@ -64,7 +64,15 @@ function duration(minutes){
  const n=Number(minutes);if(!Number.isFinite(n)||n<=0)return "";
  return Math.floor(n/60)+"h "+String(n%60).padStart(2,"0")+"m";
 }
+function knownAirportCode(value){
+ const q=String(value||"").trim().toLowerCase();
+ // Multi-area Hong Kong itineraries use Hong Kong International as the primary gateway.
+ if(/hong\\s*kong|kowloon|hong\\s*kong\\s*island/.test(q))return "HKG";
+ if(/macau|macao/.test(q))return "MFM";
+ return "";
+}
 async function resolveAirport(value,key){
+ const known=knownAirportCode(value);if(known)return known;
  const text=clip(value,100);
  if(/^[A-Z]{3}$/i.test(text))return text.toUpperCase();
  const result=await serpSearch({engine:"google_flights_autocomplete",q:text,hl:"en",gl:"in",exclude_regions:"true"},key);
@@ -120,6 +128,7 @@ function extractAirportCode(payload){
  return "";
 }
 async function resolveFallbackAirport(value,rapidKey,perceptKey){
+ const known=knownAirportCode(value);if(known)return known;
  const q=clip(value,100);if(/^[A-Z]{3}$/i.test(q))return q.toUpperCase();
  if(rapidKey){try{const u=new URL("https://google-flights2.p.rapidapi.com/api/v1/searchAirport");u.searchParams.set("query",q);const j=await fallbackRequest(u,{"X-RapidAPI-Key":rapidKey,"X-RapidAPI-Host":"google-flights2.p.rapidapi.com"});const code=extractAirportCode(j);if(code)return code}catch{}}
  if(perceptKey){try{const u=new URL("https://api.perceptlayer.com/v1/google-flights/autocomplete");u.searchParams.set("q",q);u.searchParams.set("hl","en");u.searchParams.set("gl","in");const j=await fallbackRequest(u,{"X-API-Key":perceptKey});const code=extractAirportCode(j);if(code)return code}catch{}}
