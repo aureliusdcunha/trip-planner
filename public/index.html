@@ -425,7 +425,7 @@ function renderContent(){
   live.append(panel,quotaRow);
   root.append(live);
   const autoRefreshKey=[originField.field.value.trim(),destinationField.field.value.trim(),departField.field.value,returnField.field.value,savedTrip.cur||local].join('|');
-  if(autoRefreshKey&&!lastAutoFlightRefreshKey.includes(autoRefreshKey)){
+  if(autoRefreshKey&&lastAutoFlightRefreshKey!==autoRefreshKey){
    lastAutoFlightRefreshKey=autoRefreshKey;
    liveStatus.textContent=(trip.flight_options||[]).length?'Saved flight data loaded. Refreshing current provider prices in the background…':'Checking current provider prices for this trip…';
    setTimeout(()=>{if(active==='Flights'&&trip)searchButton.click()},0);
