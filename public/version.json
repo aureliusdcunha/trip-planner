@@ -1,5 +1,5 @@
 {
-  "version": "1.7.21",
+  "version": "1.7.22",
   "released": "2026-11-23",
-  "releaseName": "Admin-style diagnostics console and configurable log retention"
+  "releaseName": "Browser-local diagnostics retention controls"
 }
