@@ -1,3 +1,4 @@
+import { withTransactionLog } from "../lib/transaction-log.js";
 import { runWorkersAIWithQuota } from "../lib/ai-quota.js";
 // Cloudflare Pages Function: POST /api/flights
 // Indicative flight-price search via Google Flights results through SerpApi.
@@ -134,7 +135,7 @@ async function runPerceptFallback(key,from,to,b,currency){
 }
 function sortFallback(rows){const seen=new Set();return rows.filter(x=>{const k=[x.segment,x.cabin_class,x.route,x.flight_number].join("|").toLowerCase().replace(/\s+/g,"");if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>a.price_estimate-b.price_estimate).slice(0,160)}
 
-export async function onRequestPost({request,env}){
+async function handleFlightsPost({request,env}){
  try{
   const origin=request.headers.get("origin");
   if(origin&&origin!==new URL(request.url).origin)return json({error:"Forbidden request."},403);
@@ -222,3 +223,4 @@ export async function onRequestPost({request,env}){
   return json({error:error?.message||"Flight price search failed."},502);
  }
 }
+export async function onRequestPost(context){return withTransactionLog(context,"flights",()=>handleFlightsPost(context));}
