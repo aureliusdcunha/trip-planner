@@ -1,5 +1,5 @@
 {
-  "version": "1.7.46",
+  "version": "1.7.47",
   "released": "2026-11-23",
-  "releaseName": "Repair plan API deployment syntax"
+  "releaseName": "Improve raw diagnostics timing readability"
 }
