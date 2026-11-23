@@ -42,6 +42,15 @@ function safeValue(value,depth=0){
 async function bodyText(response){
  try{return await response.text()}catch(e){return "[response capture failed: "+String(e?.message||e)+"]"}
 }
+function streamedApplicationError(raw){
+ if(typeof raw!=="string"||!raw.includes("data:"))return null;
+ for(const line of raw.split(/\r?\n/)){
+  if(!line.startsWith("data:"))continue;
+  const payload=line.slice(5).trim();if(!payload)continue;
+  try{const event=JSON.parse(payload);if(event?.type==="error")return {name:"ApplicationStreamError",message:String(event.error||event.message||"Streamed request failed").slice(0,5000)}}catch{}
+ }
+ return null;
+}
 async function persist(env,record){
  const db=env?.QUOTA_DB;if(!db)throw new Error("QUOTA_DB binding unavailable");
  await db.prepare(TABLE).run();
@@ -75,8 +84,10 @@ export async function withTransactionLog(context,endpoint,handler){
   const raw=await bodyText(cloned);
   let responseBody=raw;
   try{responseBody=safeValue(JSON.parse(raw))}catch{}
+  const streamFailure=streamedApplicationError(raw);
+  if(streamFailure)traceEvent(context,"application_stream_error","error",streamFailure);
   const completedAt=new Date().toISOString();
-  let log={transaction_id:id,trace_id:id,endpoint,started_at:startedAt,completed_at:completedAt,duration_ms:Date.now()-start,http_status:status,outcome:handlerError?"exception":status>=500?"server_error":status>=400?"client_error":"success",trace_events:trace.events,trace_events_dropped:trace.dropped,request:requestRecord,response:responseBody,error:handlerError};
+  let log={transaction_id:id,trace_id:id,endpoint,started_at:startedAt,completed_at:completedAt,duration_ms:Date.now()-start,http_status:status,outcome:handlerError?"exception":streamFailure?"application_error":status>=500?"server_error":status>=400?"client_error":"success",trace_events:trace.events,trace_events_dropped:trace.dropped,request:requestRecord,response:responseBody,error:handlerError||streamFailure};
   let serialized=JSON.stringify(log);
   if(serialized.length>MAX_LOG_CHARS){log={...log,request:{...requestRecord,body:"[omitted: transaction log exceeded 900KB]"},response:"[omitted: transaction log exceeded 900KB]",truncated:true};serialized=JSON.stringify(log)}
   try{await persist(env,log)}catch(error){console.error("Transaction log persistence failed",id,error?.message||error)}
