@@ -27,7 +27,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
 .hidden{display:none!important}.foot{font-size:11px;color:var(--muted);margin-top:18px}
 @media(max-width:950px){.filters{grid-template-columns:repeat(3,minmax(0,1fr))}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.wrap{padding:18px 12px 40px}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.filters .filter:first-child{grid-column:1/-1}.detail-grid{grid-template-columns:1fr 1fr}.top{align-items:flex-start}h1{font-size:25px}}
-</style>
+.trace-timeline{display:grid;gap:8px}.trace-event{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:9px;padding:10px;background:#fff}.trace-dot{width:9px;height:9px;border-radius:50%;background:#8b8b8b;margin-top:6px;flex:none}.trace-dot.good{background:#18794e}.trace-dot.warn{background:#a66b12}.trace-dot.bad{background:#b42318}.trace-main{min-width:0;flex:1}.trace-main b{display:block;text-transform:capitalize}.trace-main small{display:block;color:var(--muted);font-size:11px}.trace-main pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f8f5ef;padding:8px;border-radius:6px;margin:7px 0 0;font:11px/1.45 ui-monospace,monospace}.trace-event .pill{flex:none}</style>
 </head>
 <body>
 <main class="wrap">
@@ -70,7 +70,7 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
     <section id="detailPanel" class="panel hidden">
       <div class="detail-head"><div><h1 style="font-size:23px">Transaction details</h1><div class="muted mono" id="detailId"></div></div><div class="filter-actions"><button class="btn secondary" id="copyBtn" type="button">Copy JSON</button><button class="btn secondary" id="downloadBtn" type="button">Download JSON</button><button class="btn secondary" id="closeDetailBtn" type="button">Close</button></div></div>
       <div class="detail-grid" id="detailMeta"></div>
-      <h3 style="margin:12px 0 8px">Complete transaction record</h3><pre id="detailJson"></pre>
+      <h3 style="margin:12px 0 8px">Execution timeline</h3><div id="traceTimeline" class="trace-timeline"></div><h3 style="margin:12px 0 8px">Complete transaction record</h3><pre id="detailJson"></pre>
     </section>
   </section>
   <p class="foot">Transaction records are stored in Cloudflare D1 and automatically expire after seven days. Request and response payloads may contain trip details; keep this page and its access token private.</p>
@@ -128,6 +128,9 @@ pre{margin:0;background:#171b22;color:#e8edf3;border-radius:10px;padding:16px;ov
         ["Endpoint",log.endpoint],["HTTP status",log.http_status],["Outcome",log.outcome],["Duration",log.duration_ms+" ms"],
         ["Started",dateText(log.started_at)],["Completed",dateText(log.completed_at)]
       ].map(([k,v])=>'<div class="detail-item"><small>'+esc(k)+'</small><b>'+esc(v??"—")+'</b></div>').join("");
+      const events=Array.isArray(log.trace_events)?log.trace_events:[];
+      $("traceTimeline").innerHTML=events.length?events.map(ev=>{const status=ev.status||"info",cls=status==="error"?"bad":status==="warning"?"warn":status==="success"?"good":"";return '<div class="trace-event"><span class="trace-dot '+cls+'"></span><div class="trace-main"><b>'+esc(String(ev.stage||"event").replaceAll("_"," "))+'</b><small>'+esc(dateText(ev.at))+' · '+esc(ev.elapsed_ms??0)+' ms</small>'+(ev.details&&Object.keys(ev.details).length?'<pre>'+esc(JSON.stringify(ev.details,null,2))+'</pre>':"")+'</div><span class="pill '+cls+'">'+esc(status)+'</span></div>'}).join(""):'<p class="muted">No internal trace events were recorded for this transaction.</p>';
+      if(log.trace_events_dropped)$("traceTimeline").insertAdjacentHTML("beforeend",'<p class="muted">Additional events omitted: '+esc(log.trace_events_dropped)+'</p>');
       $("detailJson").textContent=JSON.stringify(log,null,2);
       $("detailPanel").classList.remove("hidden");
       $("detailPanel").scrollIntoView({behavior:"smooth",block:"start"});
