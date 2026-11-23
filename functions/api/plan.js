@@ -552,6 +552,7 @@ async function handlePlanPost(context){
         combined.research.flight_option_count=combined.flight_options.length;
         combined.research.flight_source_count=refreshed.sources.length;
         combined.research.flight_search_queries=refreshed.queries.length;
+        combined.research_sources=sourceUnique([...(combined.research_sources||[]),...refreshed.sources.map(x=>({...x,agent:"Live flight-price refresh"}))]);
         combined.research_unavailable=combined.research_unavailable.filter(x=>x.kind!=="flights");
         combined.caveats=combined.caveats.filter(x=>!/contains no saved verified live flight results|no new search was started/i.test(String(x)));
         flightRefresh={ok:true,options:combined.flight_options.length,provider:refreshed.model};
