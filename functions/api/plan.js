@@ -254,7 +254,7 @@ async function runWorkersAIAgentFallback(kind,ctx,env,label){
  if(!schema)return null;
  const messages=[
   {role:"system",content:"You are a careful travel research assistant. Return only valid JSON matching the supplied JSON schema. Never fabricate live availability, flight numbers, exact schedules, current fares or citations. Use sensible indicative planning estimates where appropriate and clearly label uncertainty in the provided fields. All numeric costs must be in destination local currency."},
-  {role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false})+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}
+  {role:"user",content:"Assignment: "+promptFor(kind,{...ctx,useSearch:false}).replace("GEMINI FLIGHT FARE-RANGE ESTIMATOR","AI FLIGHT FARE-RANGE ESTIMATOR").replace("Gemini reasoning","model reasoning")+"\n\nReturn JSON matching this schema exactly: "+JSON.stringify(schema)}
  ];
  const guarded=await runWorkersAIWithQuota(env,"@cf/zai-org/glm-4.7-flash",messages,{messages,max_completion_tokens:kind==="guide"?2400:kind==="attractions"||kind==="day"?2800:1800,chat_template_kwargs:{enable_thinking:false}},kind==="guide"?2400:kind==="attractions"||kind==="day"?2800:1800);
  if(!guarded.allowed)throw new Error(label+": Gemini models are unavailable and Workers AI fallback is unavailable ("+String(guarded.reason||"quota or binding unavailable")+").");
