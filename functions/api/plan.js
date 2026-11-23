@@ -512,8 +512,7 @@ async function handlePlanPost(context){
        const label=kind==="day"?"Day planner · "+date:kind==="transport"?"Transport researcher":kind==="flights"?"Flight researcher":kind+" researcher · "+areaName;
        const ctx={trip,useSearch,areas:report.areas||[],area,label,date,dayNumber:(report.days||[]).findIndex(x=>x.date===date)+1,base:(report.days||[]).find(x=>x.date===date)?.base||""};
        traceEvent(context,"retry_agent:"+kind,"started",{area:areaName,date});
-       const retryCurrency=String(report.currency_code||report.budget?.currency||trip.cur).toUpperCase();
-        const result=kind==="flights"?await runLiveFlightResearch(context,trip,emit,retryCurrency):await runAgent(kind,ctx,env,emit,retryBudget,modelState,requestBudget,requestGate);
+       const result=await runAgent(kind,{...ctx,useSearch:kind==="flights"?true:ctx.useSearch},env,emit,retryBudget,modelState,requestBudget,requestGate);
        traceEvent(context,"retry_agent:"+kind,"success",{model:result.model});
        if(kind==="flights"){const data=result.data;report.flight_options=data.flight_options||[];report.getting_there=data.getting_there||"";}
        else if(kind==="stay"){if(!area)throw new Error("The requested area was not found in the saved report.");area.hotel_options=result.data.hotel_options||[];}
