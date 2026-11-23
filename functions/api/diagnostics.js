@@ -121,6 +121,15 @@ export async function onRequestPost({ request, env }) {
   await db.prepare(TABLE).run();
   const body=await request.json();
   await db.prepare(SETTINGS_TABLE).run();
+  if(body.action==="save_itinerary_retention"){
+   const days=Number(body.itinerary_retention_days);
+   if(!Number.isInteger(days)||days<0||days>3650)return json({error:"Completed itinerary retention must be Never (0) or between 1 and 3650 days."},400);
+   await db.prepare("CREATE TABLE IF NOT EXISTS search_sessions (session_id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL, status TEXT NOT NULL, destination TEXT NOT NULL DEFAULT '', start_date TEXT, end_date TEXT, input_json TEXT NOT NULL, progress_json TEXT NOT NULL DEFAULT '{}', report_json TEXT, duration_ms INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_activity TEXT NOT NULL, locator TEXT)").run();
+   await db.prepare("INSERT INTO app_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at").bind("itinerary_retention_days",String(days),new Date().toISOString()).run();
+   let deleted=0;
+   if(days>0){const cutoff=new Date(Date.now()-days*86400000).toISOString();const result=await db.prepare("DELETE FROM search_sessions WHERE status='completed' AND report_json IS NOT NULL AND updated_at < ?").bind(cutoff).run();deleted=Number(result.meta?.changes||0);}
+   return json({success:true,itinerary_retention_days:days,deleted});
+  }
   if(body.action==="save_cache_policy"){
    const hours=Number(body.flight_cache_hours);
    if(!Number.isInteger(hours)||hours<1||hours>720)return json({error:"Flight cache duration must be between 1 and 720 hours."},400);
