@@ -560,6 +560,7 @@ async function handlePlanPost(context){
         emit({type:"agent_completed",agent:"Live flight-price refresh",completed:1,total:1,sourceCount:refreshed.sources.length,searchCount:refreshed.queries.length});
        }catch(error){
         const message=error?.message||String(error);
+        combined.flight_options=(Array.isArray(combined.flight_options)?combined.flight_options:[]).filter(f=>f?.live_fare===true&&f?.price_unverified!==true);
         combined.research.flight_search_status="failed";
         combined.research.flight_failure_reason=message;
         combined.research.flight_refreshed_at=new Date().toISOString();
@@ -572,8 +573,7 @@ async function handlePlanPost(context){
         emit({type:"agent_failed",agent:"Live flight-price refresh",error:message});
        }
        combined.cache={hit:true,saved:true,createdAt:cachedTrip.createdAt,flightsRefreshed:flightRefresh.ok,flightRefresh};
-       const saved=await writeTripReportCache(env,cacheKey,cacheInput,combined);
-       combined.cache.saved=saved;
+       try{const saved=await writeTripReportCache(env,cacheKey,cacheInput,combined);combined.cache.saved=saved;}catch(saveError){combined.cache.saved=false;traceEvent(context,"cache_flight_refresh_persist","warning",{message:saveError?.message||String(saveError)});}
        emit({type:"result",data:combined,cacheHit:true,cacheCreatedAt:cachedTrip.createdAt,flightsRefreshed:flightRefresh.ok});
        return;
       }
