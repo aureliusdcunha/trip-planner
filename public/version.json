@@ -1,5 +1,5 @@
 {
-  "version": "1.7.18",
+  "version": "1.7.19",
   "released": "2026-11-23",
-  "releaseName": "Shared live flight search, verified fares and provider fallback"
+  "releaseName": "Database-first trip reuse and cache orchestration fix"
 }
